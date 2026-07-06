@@ -1,0 +1,10 @@
+{
+  "elapsed_minutes": 378.3,
+  "best_prompt": "As a seasoned competitive programming expert, tackle this problem methodically. Before writing any code, first perform a",
+  "best_fitness_evolution": 0.6619087878066205,
+  "best_fitness_holdout": 0.7478131168536044,
+  "best_uid": "fdec267c",
+  "total_generations": 12,
+  "resumed": true,
+  "selection_scheme": "roulette"
+}

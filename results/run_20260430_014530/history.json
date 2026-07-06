@@ -1,0 +1,132 @@
+[
+  {
+    "generation": 0,
+    "best": 0.7337958773252891,
+    "mean": 0.6890007910773569,
+    "worst": 0.6569826810616285,
+    "std": 0.027041,
+    "cv": 0.039247,
+    "best_uid": "32717cfc",
+    "best_prompt": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program."
+  },
+  {
+    "generation": 1,
+    "best": 0.7337958773252891,
+    "mean": 0.6650942775378201,
+    "worst": 0.6203361499544346,
+    "std": 0.038503,
+    "cv": 0.057891,
+    "best_uid": "32717cfc",
+    "best_prompt": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program."
+  },
+  {
+    "generation": 2,
+    "best": 0.7337958773252891,
+    "mean": 0.6639239816969038,
+    "worst": 0.6253939430023021,
+    "std": 0.037395,
+    "cv": 0.056324,
+    "best_uid": "32717cfc",
+    "best_prompt": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program."
+  },
+  {
+    "generation": 3,
+    "best": 0.7337958773252891,
+    "mean": 0.6730756274896545,
+    "worst": 0.6249377853497883,
+    "std": 0.04092,
+    "cv": 0.060795,
+    "best_uid": "32717cfc",
+    "best_prompt": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program."
+  },
+  {
+    "generation": 4,
+    "best": 0.7337958773252891,
+    "mean": 0.6721814557249146,
+    "worst": 0.5871710359701355,
+    "std": 0.048177,
+    "cv": 0.071673,
+    "best_uid": "32717cfc",
+    "best_prompt": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program."
+  },
+  {
+    "generation": 5,
+    "best": 0.7337958773252891,
+    "mean": 0.6492822639904088,
+    "worst": 0.5540421661242094,
+    "std": 0.059389,
+    "cv": 0.091468,
+    "best_uid": "32717cfc",
+    "best_prompt": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program."
+  },
+  {
+    "generation": 6,
+    "best": 0.7345797279775608,
+    "mean": 0.7018431617651631,
+    "worst": 0.661640810170222,
+    "std": 0.029507,
+    "cv": 0.042042,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  },
+  {
+    "generation": 7,
+    "best": 0.7345797279775608,
+    "mean": 0.6820530488537158,
+    "worst": 0.6430154004921806,
+    "std": 0.032251,
+    "cv": 0.047285,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  },
+  {
+    "generation": 8,
+    "best": 0.7345797279775608,
+    "mean": 0.6828190615185138,
+    "worst": 0.6600843302129322,
+    "std": 0.026918,
+    "cv": 0.039421,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  },
+  {
+    "generation": 9,
+    "best": 0.7345797279775608,
+    "mean": 0.6741791635371059,
+    "worst": 0.6085354011842461,
+    "std": 0.048854,
+    "cv": 0.072465,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  },
+  {
+    "generation": 10,
+    "best": 0.7345797279775608,
+    "mean": 0.6675185923650996,
+    "worst": 0.6037059088142679,
+    "std": 0.051681,
+    "cv": 0.077422,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  },
+  {
+    "generation": 11,
+    "best": 0.7345797279775608,
+    "mean": 0.667074048181808,
+    "worst": 0.5969323383874467,
+    "std": 0.04952,
+    "cv": 0.074235,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  },
+  {
+    "generation": 12,
+    "best": 0.7345797279775608,
+    "mean": 0.6900509059224229,
+    "worst": 0.6220286387159452,
+    "std": 0.039267,
+    "cv": 0.056905,
+    "best_uid": "822eea31",
+    "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),"
+  }
+]

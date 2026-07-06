@@ -1,0 +1,137 @@
+% =============================================================================
+% CORRECTIONS FILE
+% Replace the indicated blocks in the main .tex with the versions below.
+% Everything is 100% identical to the original except the marked fixes.
+% =============================================================================
+
+
+% =============================================================================
+% REPLACE: \subsection{Selection Schemes} block  (was lines 263-277)
+% FIXES: elitism top-2 -> top-1 | survival scheme description
+% =============================================================================
+
+We evaluate three selection configurations:
+
+\begin{enumerate}
+    \item \textbf{Tournament selection + crossover + mutation}: Three individuals are drawn
+    at random; the highest-fitness individual is admitted to the mating pool.
+
+    \item \textbf{Elitism (top-1) + crossover + mutation}: The highest-fitness
+    prompt is carried forward unchanged into every subsequent generation.
+
+    \item \textbf{Roulette selection + crossover + mutation}: Each individual is selected
+    with probability proportional to its fitness score.
+\end{enumerate}
+
+\textbf{Survival scheme:} At each generation all non-elite individuals are replaced by
+newly bred offspring; the population is fully regenerated except for the elite
+carry-forward (one individual in the elitism scheme, zero in the tournament and roulette
+schemes).
+
+
+% =============================================================================
+% REPLACE: \textbf{Crossover} sentence in \subsection{Evolutionary Operators}
+%          (was lines 293-297)
+% FIX: quoted meta-prompt matches actual code in llm.py
+% =============================================================================
+
+\textbf{Crossover (rate 0.8):} Given two parent prompts $P_A$ and $P_B$, a meta-prompt is
+submitted to the LLM: \textit{``Combine these two coding-instruction prompts into one
+coherent prompt. Preserve the strongest strategies from each parent. Do not simply
+concatenate --- produce a unified instruction paragraph.''} This produces an offspring
+that inherits strategic elements from both parents while remaining grammatically coherent.
+
+
+% =============================================================================
+% REPLACE: Table 2 (Experimental Parameters) tabular body  (was lines 354-367)
+% FIXES: Survival pruning row | Target LLM | add Optimizer LLM | temperatures
+% =============================================================================
+
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Population size & 5 \\
+Training problems & 65 \\
+Generations & 12 \\
+Crossover rate & 0.8 \\
+Mutation: strategy injection & 0.25 \\
+Mutation: sentence deletion & 0.15 \\
+Mutation: rephrasing & 0.10 \\
+Survival & Full generational replacement \\
+Total API calls (approx.) & 328--334 per generation \\
+Target LLM & Gemini 2.5 Flash (Google, Vertex AI) \\
+Optimizer LLM & Gemini 2.5 Pro (Google, Vertex AI) \\
+LLM temperature & 0.0 (evaluation), 0.7 (operators) \\
+\bottomrule
+\end{tabular}
+
+
+% =============================================================================
+% REPLACE: entire \section{Results} block  (was lines 370-432)
+% FIX: \label commands now match the \ref{} keys used in the Discussion section
+% =============================================================================
+
+%=============================================================================
+\section{Results}
+\label{sec:results}
+%=============================================================================
+
+We present results for each of the three selection schemes, followed by an overall
+comparison. Each figure shows best, mean, and worst fitness (pass@1) per generation.
+
+\subsection{Roulette Selection}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{roulette_convergence.png}
+    \caption{Convergence}
+    \label{fig:roulette}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{roulette_diversity.png}
+    \caption{Diversity}
+    \label{fig:roulette_div}
+\end{figure}
+
+\subsection{Tournament Selection with Elitism}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{tournament_convergence.png}
+    \caption{Convergence}
+    \label{fig:tourn_elite}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{tournament_diversity.png}
+    \caption{Diversity}
+    \label{fig:tourn_elite_div}
+\end{figure}
+
+\subsection{Tournament Selection (No Elitism)}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{tournament_convergence.png}
+    \caption{Convergence}
+    \label{fig:tourn}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{tournament_diversity.png}
+    \caption{Diversity}
+    \label{fig:tourn_div}
+\end{figure}
+
+\subsection{Overall Comparison}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{test_3_score_by_rating.png}
+    \caption{Score with respect to different difficulty rating}
+    \label{fig:overall}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{test_4_per_problem_scatter.png}
+    \caption{Handwritten Prompts Vs Evolved Prompts}
+    \label{fig:seed_vs_evolved}
+\end{figure}

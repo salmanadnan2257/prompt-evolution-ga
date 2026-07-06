@@ -1,0 +1,21 @@
+========================================================================
+PROMPT GENEALOGY REPORT
+Run dir   : results/run_20260430_014530
+Best uid  : 822eea31
+Lineage depth (parent_a chain): 2 steps
+========================================================================
+
+[Step 0]  uid=822eea31  gen=6  fitness=0.7346  ops=crossover+delete  (BEST (final))
+  Prompt (132 chars):
+    Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),
+  Parents: A=uid=32717cfc gen=0 fit=0.7338
+           B=uid=3e214808 gen=5 fit=0.6759
+
+[Step 1]  uid=32717cfc  gen=0  fitness=0.7338  ops=seed  (SEED (origin))
+  Prompt (298 chars):
+    Think like a competitive programmer. Identify the algorithm pattern, greedy, dynamic programming, graph traversal, binary search, math. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(), handle all cases within the constraints. Output only the program.
+
+------------------------------------------------------------------------
+Total individuals in registry: 49
+Full tree (both parents at each fork) is in genealogy_tree.json
+========================================================================

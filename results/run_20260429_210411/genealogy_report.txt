@@ -1,0 +1,11 @@
+========================================================================
+PROMPT GENEALOGY REPORT
+Run dir   : results/run_20260429_210411
+Best uid  : efd4a762
+Lineage depth (parent_a chain): 0 steps
+========================================================================
+
+------------------------------------------------------------------------
+Total individuals in registry: 60
+Full tree (both parents at each fork) is in genealogy_tree.json
+========================================================================

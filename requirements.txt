@@ -1,0 +1,11 @@
+# Runtime (LLM calls go through Google Cloud Vertex AI, see llm.py)
+google-genai>=1.0,<2.0
+google-auth>=2.0,<3.0
+
+# Analysis / plotting (visualize_test_results.py)
+matplotlib>=3.5,<4.0
+numpy>=1.24,<3.0
+
+# System dependencies (not pip-installable):
+#   g++ with -std=c++23 support (evaluator.py compiles the generated C++)
+#   Python 3.11+ (main.py relies on 3.11-era stdlib behaviour)

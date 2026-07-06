@@ -1,0 +1,132 @@
+[
+  {
+    "generation": 0,
+    "best": 0.6909091733859536,
+    "mean": 0.6061321478684885,
+    "worst": 0.399653,
+    "std": 0.106488,
+    "cv": 0.175684,
+    "best_uid": "5e626fc1",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 1,
+    "best": 0.6558838436303116,
+    "mean": 0.6307410376185045,
+    "worst": 0.600951577662104,
+    "std": 0.021064,
+    "cv": 0.033396,
+    "best_uid": "9cbe70f1",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 2,
+    "best": 0.6641263414947625,
+    "mean": 0.6312791230890779,
+    "worst": 0.5882411156095367,
+    "std": 0.026395,
+    "cv": 0.041811,
+    "best_uid": "fcd13a33",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 3,
+    "best": 0.6716918994318376,
+    "mean": 0.6323513889724893,
+    "worst": 0.6166851517935109,
+    "std": 0.020082,
+    "cv": 0.031757,
+    "best_uid": "971c814f",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 4,
+    "best": 0.6811723312806904,
+    "mean": 0.6461968939425983,
+    "worst": 0.6037643313387345,
+    "std": 0.027536,
+    "cv": 0.042613,
+    "best_uid": "4475815e",
+    "best_prompt": "First, approach this step-by-step: understand the input-output relationship to identify the core algorithm, making sure to handle all"
+  },
+  {
+    "generation": 5,
+    "best": 0.7181212741506859,
+    "mean": 0.6798730118489431,
+    "worst": 0.6278862314156431,
+    "std": 0.032141,
+    "cv": 0.047275,
+    "best_uid": "f7031ffb",
+    "best_prompt": "First, approach this step-by-step: understand the input-output relationship to identify the core algorithm, making sure to handle all"
+  },
+  {
+    "generation": 6,
+    "best": 0.6654031005114596,
+    "mean": 0.6387147459640872,
+    "worst": 0.6131313956081758,
+    "std": 0.01689,
+    "cv": 0.026444,
+    "best_uid": "23bd6138",
+    "best_prompt": "First, approach this step-by-step: understand the input-output relationship to identify the core algorithm, making sure to handle all"
+  },
+  {
+    "generation": 7,
+    "best": 0.7063282732447819,
+    "mean": 0.6411615778970379,
+    "worst": 0.5952084865986793,
+    "std": 0.037602,
+    "cv": 0.058647,
+    "best_uid": "6ea678cd",
+    "best_prompt": "First, approach this step-by-step: understand the input-output relationship to identify the core algorithm, making sure to handle all"
+  },
+  {
+    "generation": 8,
+    "best": 0.6917636071416542,
+    "mean": 0.6657355103998315,
+    "worst": 0.6313525896188436,
+    "std": 0.025773,
+    "cv": 0.038714,
+    "best_uid": "e614d0c4",
+    "best_prompt": "First, approach this step-by-step: understand the input-output relationship to identify the core algorithm, making sure to handle all"
+  },
+  {
+    "generation": 9,
+    "best": 0.7387132496515683,
+    "mean": 0.6876289420447323,
+    "worst": 0.6622151132850109,
+    "std": 0.029104,
+    "cv": 0.042326,
+    "best_uid": "bb27bf53",
+    "best_prompt": "First, approach the problem systematically: analyze the input-output relationship to identify the core algorithm, making sure to handle all edge cases and constraints"
+  },
+  {
+    "generation": 10,
+    "best": 0.6853516405004855,
+    "mean": 0.6597798347214836,
+    "worst": 0.6052610293572427,
+    "std": 0.02826,
+    "cv": 0.042833,
+    "best_uid": "337d4fd4",
+    "best_prompt": "First, approach this step-by-step: understand the input-output relationship to identify the core algorithm, pay close attention to variable types"
+  },
+  {
+    "generation": 11,
+    "best": 0.6997957883454431,
+    "mean": 0.6579402397105423,
+    "worst": 0.6050758400526203,
+    "std": 0.035157,
+    "cv": 0.053436,
+    "best_uid": "0582d5a6",
+    "best_prompt": "First, approach the problem systematically: analyze the input-output relationship to identify the core algorithm, making sure to handle all edge"
+  },
+  {
+    "generation": 12,
+    "best": 0.6530722240105427,
+    "mean": 0.6154471742618882,
+    "worst": 0.5427430356550386,
+    "std": 0.038748,
+    "cv": 0.06296,
+    "best_uid": "efd4a762",
+    "best_prompt": "First, approach the problem systematically: analyze the input-output relationship to identify the core algorithm, paying close attention to variable types, edge"
+  }
+]

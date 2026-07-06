@@ -1,0 +1,1 @@
+First, approach the problem systematically: analyze the input-output relationship to identify the core algorithm, paying close attention to variable types, edge

@@ -1,0 +1,28 @@
+{
+  "uid": "822eea31",
+  "generation": 6,
+  "fitness": 0.7345797279775608,
+  "operators": "crossover+delete",
+  "prompt_preview": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, inc",
+  "parent_a": {
+    "uid": "32717cfc",
+    "generation": 0,
+    "fitness": 0.7337958773252891,
+    "operators": "seed",
+    "prompt_preview": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, bina"
+  },
+  "parent_b": {
+    "uid": "3e214808",
+    "generation": 5,
+    "fitness": 0.6759386850348984,
+    "operators": "copy",
+    "prompt_preview": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, bina",
+    "parent_a": {
+      "uid": "32717cfc",
+      "generation": 0,
+      "fitness": 0.7337958773252891,
+      "operators": "seed",
+      "prompt_preview": "Think like a competitive programmer. Identify the algorithm pattern \u2014 greedy, dynamic programming, graph traversal, bina"
+    }
+  }
+}

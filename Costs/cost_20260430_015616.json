@@ -1,0 +1,26 @@
+{
+  "timestamp": "20260430_015616",
+  "elapsed_seconds": 12.8,
+  "mode": "vertex-ai-realtime",
+  "note": "Costs are real charges billed to your GCP account via Vertex AI. Vertex AI pricing matches direct Anthropic API rates. $300 GCP free credit applies.",
+  "total_llm_calls": 106,
+  "total_input_tokens": 101421,
+  "total_output_tokens": 166794,
+  "grand_total_estimated_usd": 0.115287,
+  "breakdown_by_phase": {
+    "fitness": {
+      "calls": 106,
+      "input_tokens": 101421,
+      "output_tokens": 166794,
+      "total_cost_usd": 0.115287
+    }
+  },
+  "breakdown_by_model": {
+    "gemini-2.5-flash": {
+      "calls": 106,
+      "input_tokens": 101421,
+      "output_tokens": 166794,
+      "total_cost_usd": 0.115287
+    }
+  }
+}

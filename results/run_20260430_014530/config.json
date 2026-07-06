@@ -1,0 +1,16 @@
+{
+  "population_size": 5,
+  "generations": 12,
+  "crossover_rate": 0.8,
+  "tournament_size": 3,
+  "elitism_count": 0,
+  "mut_inject": 0.25,
+  "mut_delete": 0.15,
+  "mut_rephrase": 0.1,
+  "evolution_size": 65,
+  "holdout_size": 200,
+  "target_model": "gemini-2.5-flash",
+  "optimizer_model": "gemini-2.5-pro",
+  "gcp_region": "us-central1",
+  "random_seed": 42
+}

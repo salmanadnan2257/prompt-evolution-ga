@@ -1,0 +1,132 @@
+[
+  {
+    "generation": 0,
+    "best": 0.7380210235241195,
+    "mean": 0.6636134977882368,
+    "worst": 0.6113349077822762,
+    "std": 0.044357,
+    "cv": 0.066841,
+    "best_uid": "27be460f",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 1,
+    "best": 0.6961470985155196,
+    "mean": 0.6537868519773735,
+    "worst": 0.6219099989211921,
+    "std": 0.025582,
+    "cv": 0.039129,
+    "best_uid": "00bc27c3",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 2,
+    "best": 0.7115999535909038,
+    "mean": 0.6604945693215519,
+    "worst": 0.609569606520071,
+    "std": 0.03811,
+    "cv": 0.0577,
+    "best_uid": "51f042e4",
+    "best_prompt": "Approach this step by step: (1) understand the input-output relationship, (2) identify the core algorithm, (3) handle boundary conditions, (4) implement as a complete C++ program with main() that reads from cin and writes to cout. Output only the C++ source."
+  },
+  {
+    "generation": 3,
+    "best": 0.7031930883014474,
+    "mean": 0.6510178727361391,
+    "worst": 0.5770471143923156,
+    "std": 0.041019,
+    "cv": 0.063007,
+    "best_uid": "e7c09d82",
+    "best_prompt": "Before writing any code, first trace the provided sample inputs manually to confirm you understand the expected output and why."
+  },
+  {
+    "generation": 4,
+    "best": 0.6856384151293653,
+    "mean": 0.6159075360513152,
+    "worst": 0.5526206636500754,
+    "std": 0.042904,
+    "cv": 0.06966,
+    "best_uid": "0332b2d4",
+    "best_prompt": "Approach this step-by-step. First, manually trace the provided sample inputs."
+  },
+  {
+    "generation": 5,
+    "best": 0.7015075182013547,
+    "mean": 0.6723641836290009,
+    "worst": 0.6172619142123786,
+    "std": 0.029194,
+    "cv": 0.04342,
+    "best_uid": "33e2ce69",
+    "best_prompt": "Approach this step-by-step. First, manually trace the provided sample inputs."
+  },
+  {
+    "generation": 6,
+    "best": 0.6647529173612765,
+    "mean": 0.6394488139073755,
+    "worst": 0.6108239751833465,
+    "std": 0.018706,
+    "cv": 0.029253,
+    "best_uid": "a6e13296",
+    "best_prompt": "You are an expert competitive programmer. Before writing any code, analyze the problem carefully. First, manually trace the provided sample inputs."
+  },
+  {
+    "generation": 7,
+    "best": 0.6744110370193962,
+    "mean": 0.6580674611171158,
+    "worst": 0.6248564676571345,
+    "std": 0.018221,
+    "cv": 0.027689,
+    "best_uid": "ebf474ce",
+    "best_prompt": "As a seasoned competitive programming expert, tackle this problem methodically. Perform a detailed analysis of the requirements before starting to code."
+  },
+  {
+    "generation": 8,
+    "best": 0.7083662776851631,
+    "mean": 0.6333415363446323,
+    "worst": 0.5608853959937551,
+    "std": 0.047098,
+    "cv": 0.074364,
+    "best_uid": "25ca5ba9",
+    "best_prompt": "As a seasoned competitive programming expert, tackle this problem methodically. Before writing any code, perform a detailed analysis of the requirements. First"
+  },
+  {
+    "generation": 9,
+    "best": 0.6483853959937551,
+    "mean": 0.6308015863072942,
+    "worst": 0.6036131273919841,
+    "std": 0.016563,
+    "cv": 0.026257,
+    "best_uid": "2d5b48e8",
+    "best_prompt": "As a seasoned competitive programming expert, approach this problem methodically and step-by-step. Before writing any code, first perform"
+  },
+  {
+    "generation": 10,
+    "best": 0.7033565887685916,
+    "mean": 0.6550823858340402,
+    "worst": 0.629473492333355,
+    "std": 0.025585,
+    "cv": 0.039057,
+    "best_uid": "d9a5ea81",
+    "best_prompt": "You are an expert competitive programmer. Before writing any code, approach this step-by-step. First, analyze the problem carefully by manually"
+  },
+  {
+    "generation": 11,
+    "best": 0.700478070815632,
+    "mean": 0.6483472310782308,
+    "worst": 0.6061842105263158,
+    "std": 0.039602,
+    "cv": 0.061081,
+    "best_uid": "dbe6da02",
+    "best_prompt": "As a seasoned competitive programming expert, approach this problem methodically and step-by-step. Before writing any"
+  },
+  {
+    "generation": 12,
+    "best": 0.6619087878066205,
+    "mean": 0.616447413270759,
+    "worst": 0.5570392421476013,
+    "std": 0.036069,
+    "cv": 0.058511,
+    "best_uid": "fdec267c",
+    "best_prompt": "As a seasoned competitive programming expert, tackle this problem methodically. Before writing any code, first perform a"
+  }
+]

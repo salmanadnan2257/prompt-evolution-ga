@@ -1,0 +1,8 @@
+{
+  "seed_idx": 0,
+  "uid": "20c258fb",
+  "prompt": "You are an expert competitive programmer. Before writing any code, analyse the problem carefully: identify the input format, the output format, the constraints, and any edge cases (empty input, n=1, maximum values, overflow risk). Pay close attention to output ordering \u2014 the problem statement specifies whether values should be ascending, descending, or in some other order; match it exactly. Then write a complete, compilable C++ program that reads from stdin using cin and writes to stdout using cout. Include main(). Output only the C++ source code \u2014 no explanations, no markdown commentary.",
+  "fitness": 0.399653,
+  "failure_examples": [],
+  "operators": "seed"
+}

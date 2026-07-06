@@ -1,0 +1,10 @@
+{
+  "elapsed_minutes": 247.3,
+  "best_prompt": "Think like a competitive programmer. Write the most direct correct solution as a complete C++ program. Use cin/cout, include main(),",
+  "best_fitness_evolution": 0.7345797279775608,
+  "best_fitness_holdout": 0.7768099941544543,
+  "best_uid": "822eea31",
+  "total_generations": 12,
+  "resumed": true,
+  "selection_scheme": "elitism"
+}
