@@ -189,7 +189,7 @@ def main():
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n{'='*65}", flush=True)
-    print(f"  GA PROMPT EVOLUTION — START  {ts}", flush=True)
+    print(f"  GA PROMPT EVOLUTION: START  {ts}", flush=True)
     print(f"  Backend  : Google Cloud Vertex AI  ({config.GCP_REGION})", flush=True)
     print(f"  Target   : {config.TARGET_MODEL}", flush=True)
     print(f"  Optimizer: {config.OPTIMIZER_MODEL}", flush=True)
@@ -205,7 +205,7 @@ def main():
         from google import genai as _check
         from google.oauth2 import service_account as _sa_check
     except ImportError as exc:
-        print(f"ERROR: missing package — {exc}\nRun:  pip install google-genai google-auth", flush=True)
+        print(f"ERROR: missing package: {exc}\nRun:  pip install google-genai google-auth", flush=True)
         sys.exit(1)
 
     sa = json.loads(config.SERVICE_ACCOUNT_PATH.read_text())
@@ -248,7 +248,7 @@ def main():
         gen_ckpts  = list(run_dir.glob("generation_*.json"))
         seed_ckpts = list(run_dir.glob("seed_??_*.json"))
         if not gen_ckpts and seed_ckpts:
-            print(f"[RESUME] no gen checkpoints — found {len(seed_ckpts)} seed checkpoint(s). Resuming gen-0.", flush=True)
+            print(f"[RESUME] no gen checkpoints. Found {len(seed_ckpts)} seed checkpoint(s). Resuming gen-0.", flush=True)
             resume_state = None
         else:
             try:
@@ -335,7 +335,7 @@ def main():
     print(f"[MAIN] using {len(seeds)} seed prompts", flush=True)
 
     def _on_signal(signum, frame):
-        print(f"\n[MAIN] signal {signum} — flushing costs and exiting ...", flush=True)
+        print(f"\n[MAIN] signal {signum}: flushing costs and exiting ...", flush=True)
         tracker.flush()
         sys.exit(1)
 

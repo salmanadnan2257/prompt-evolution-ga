@@ -34,7 +34,7 @@ OUTCOME_COLORS = {
 OUTCOME_LABELS = {
     "perfect":             "Perfect (all tests pass)",
     "partial_pass":        "Partial pass",
-    "all_fail_early_stop": "All fail — early stop",
+    "all_fail_early_stop": "All fail: early stop",
     "compile_fail":        "Compile failure",
     "all_fail":            "All fail",
 }

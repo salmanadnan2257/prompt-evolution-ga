@@ -44,8 +44,8 @@ def _log_err(msg: str) -> None:
 
 _CODE_GEN_DIRECTIVE = (
     "\n\n"
-    "ABSOLUTE OUTPUT REQUIREMENT — NO EXCEPTIONS:\n"
-    "Your entire response must consist of ONLY the raw C++ source code — one complete file, nothing else. Use C++23.\n"
+    "ABSOLUTE OUTPUT REQUIREMENT, NO EXCEPTIONS:\n"
+    "Your entire response must consist of ONLY the raw C++ source code; one complete file, nothing else. Use C++23.\n"
     "FORBIDDEN:\n"
     "  • Backtick code fences of any form (no ```, no `, no 'cpp' or 'c++' tags)\n"
     "  • Markdown formatting of any kind\n"
@@ -58,8 +58,8 @@ _CODE_GEN_DIRECTIVE = (
 
 _OPERATOR_DIRECTIVE = (
     "\n\n"
-    "ABSOLUTE OUTPUT REQUIREMENT — NO EXCEPTIONS:\n"
-    "Your entire response must consist of ONLY the plain text of the instruction prompt — nothing else.\n"
+    "ABSOLUTE OUTPUT REQUIREMENT, NO EXCEPTIONS:\n"
+    "Your entire response must consist of ONLY the plain text of the instruction prompt; nothing else.\n"
     "FORBIDDEN:\n"
     "  • Backtick fences or code blocks\n"
     "  • Markdown formatting\n"
@@ -240,18 +240,18 @@ def generate_code(system_prompt: str, question: str) -> str:
 
 
 def run_fitness_batch(requests):
-    raise NotImplementedError("Batch API not used — realtime only.")
+    raise NotImplementedError("Batch API not used: realtime only.")
 
 
 _CROSSOVER_SYSTEM = (
-    "You merge coding-instruction prompts. Output ONLY the merged prompt — "
+    "You merge coding-instruction prompts. Output ONLY the merged prompt, "
     "no commentary, no labels, no markdown."
 )
 
 _CROSSOVER_USER = """\
 Combine these two coding-instruction prompts into one coherent prompt.
 Preserve the strongest strategies from each parent.
-Do not simply concatenate — produce a unified instruction paragraph.
+Do not simply concatenate; produce a unified instruction paragraph.
 
 --- Parent A ---
 {parent_a}
@@ -273,7 +273,7 @@ def crossover(prompt_a: str, prompt_b: str) -> str:
 
 
 _MUT_SYSTEM = (
-    "You edit coding-instruction prompts. Output ONLY the modified prompt — "
+    "You edit coding-instruction prompts. Output ONLY the modified prompt, "
     "no commentary, no labels, no markdown."
 )
 
@@ -316,8 +316,8 @@ def mutate_delete(prompt: str) -> str:
     if len(sentences) <= 1:
         return prompt
     user = (
-        "Remove one sentence from this instruction prompt — the one that "
-        "contributes the least to code-generation quality. Keep everything "
+        "Remove one sentence from this instruction prompt (the one that "
+        "contributes the least to code-generation quality). Keep everything "
         "else verbatim. Output only the modified prompt.\n\nPrompt:\n{prompt}"
     ).format(prompt=prompt)
     result = _call(

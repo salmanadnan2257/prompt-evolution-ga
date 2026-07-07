@@ -428,7 +428,7 @@ def run(
             stagnant += 1
             _log(f"[gen {gen-1}] STAGNATION {stagnant}/{config.CONVERGENCE_PATIENCE}  CV={cv:.4f}")
             if stagnant >= config.CONVERGENCE_PATIENCE:
-                _log(f"[gen {gen-1}] CONVERGENCE — stopping early")
+                _log(f"[gen {gen-1}] CONVERGENCE: stopping early")
                 break
         else:
             stagnant = 0

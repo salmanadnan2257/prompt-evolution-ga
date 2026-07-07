@@ -105,7 +105,7 @@ def run_eval(label: str, prompt: str, problems: list[dict], log_path: Path) -> l
             for line in f:
                 e = json.loads(line)
                 done[e["problem_id"]] = e
-        log(f"[{label}] resuming — {len(done)} already done")
+        log(f"[{label}] resuming: {len(done)} already done")
 
     todo = [(i, p) for i, p in enumerate(problems) if p["id"] not in done]
     log(f"[{label}] evaluating {len(todo)} remaining problems ...")
@@ -135,7 +135,7 @@ def run_eval(label: str, prompt: str, problems: list[dict], log_path: Path) -> l
             results[i] = done[prob["id"]]
 
     valid = [r["score"] for r in results if r["score"] >= 0]
-    log(f"[{label}] done — mean={sum(valid)/len(valid):.4f} over {len(valid)} valid problems")
+    log(f"[{label}] done: mean={sum(valid)/len(valid):.4f} over {len(valid)} valid problems")
     return results
 
 
@@ -210,7 +210,7 @@ def main():
     llm.set_error_log_path(OUT_DIR / "llm_errors.log")
 
     print(f"\n{'='*60}", flush=True)
-    print(f"  EVOLVED vs BASELINE — 200 APPS test-split problems", flush=True)
+    print(f"  EVOLVED vs BASELINE: 200 APPS test-split problems", flush=True)
     print(f"  Parallel evals : {config.PARALLEL_EVALS}", flush=True)
     print(f"{'='*60}\n", flush=True)
 
