@@ -91,6 +91,7 @@ Code is MIT licensed (see LICENSE). `Dataset/APPS/` is a small subset of the APP
 - The 700-token operator cap truncates winning prompts. Crossover and mutation are done by `gemini-2.5-pro`, and their output is capped at 700 tokens (`API_FALLBACK_MAX_TOKENS_OPS` in `config.py`). The best prompt from the tournament run (`results/run_20260429_210411/best_prompt.txt`) is cut off mid-sentence at "...variable types, edge." A truncated prompt still won its run, which says the fitness signal tolerated it, but operator output should be checked for completeness before it enters the population.
 
 - LLM-mediated operators drift. Because crossover merges two prompts and mutation rephrases them through a second model rather than swapping tokens, offspring can wander off the strategy their parents encoded (the paper calls this semantic drift, and argues selection pressure has to spend effort undoing it). This is the cost of operating on natural-language chromosomes instead of fixed-length vectors, and it interacts badly with the tiny population above.
+- **Writing the exhaustive project documentation honestly.** The most significant thing this documentation pass surfaced wasn't a bug, it was a contradiction: the course paper's own abstract claims the evolved prompts outperform hand-crafted baselines, but the actual committed results show every evolved prompt scoring below the best hand-written one. Reporting that honestly, instead of smoothing it into agreement with the paper, was the real difficulty.
 
 ## What I learned
 
