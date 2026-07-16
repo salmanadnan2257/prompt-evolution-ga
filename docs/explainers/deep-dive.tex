@@ -1,0 +1,1889 @@
+% explainer-source-hash: a04a073084a385412e9d3c61132e4cf9f1f315d82c412627f62fe74e5c87d8c7
+% explainer-source-commit: dc7a1bb6930b81bc5a0e8ee9ee020d240cf03e21
+% explainer-generated: 2026-07-16
+% Regenerate with /explain-all (see WIRING.md). Do not edit this stamp by hand:
+% it is how the toolchain knows whether this document still matches the code.
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\title{\textbf{prompt-evolution-ga}\\[0.3em]
+\large A Deep Dive: evolving natural-language LLM prompts\\with a genetic algorithm and a compile-and-run fitness function}
+\author{Explainer for Salman Adnan's portfolio}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{keyidea}{What this document is}
+An exhaustive, beginner-safe walkthrough of the \file{prompt-evolution-ga} project: what it
+does, how every module works, what the committed results actually say, and where the code
+and its own documentation disagree. It assumes no prior knowledge of genetic algorithms,
+large language models, or C++ tooling. Every technical term is defined at first use.
+
+This is a working document for the owner's own understanding and interview defense. It is
+deliberately blunt about the project's weak points, because a flaw you learn about here is
+a flaw you can defend in a room; one an interviewer finds first is not.
+\end{keyidea}
+
+\tableofcontents
+\newpage
+
+%=============================================================================
+\section{The project in one page}
+%=============================================================================
+
+Large language models that write code are unreasonably sensitive to the wording of the
+instructions you give them. Telling a model ``you are an expert competitive programmer,
+consider edge cases'' can produce measurably different code from ``just give me the
+code''. Finding the wording that works is normally a human sitting there, guessing,
+re-running, and guessing again.
+
+This project asks: \emph{can a genetic algorithm do that guessing automatically, and can we
+prove whether it worked?}
+
+\begin{jargon}{Large language model (LLM)}
+A program trained on enormous amounts of text that, given some text, predicts plausible
+text to follow. Modern ones (here, Google's Gemini) are good enough at this that they can
+write working computer programs from an English description of a problem. They are not
+databases and not calculators: the same question can yield different answers, and small
+changes in how you ask can change the answer a lot.
+\end{jargon}
+
+\begin{jargon}{Prompt, and system prompt}
+A \textbf{prompt} is the text you send an LLM. Many LLM interfaces split this in two: a
+\textbf{system prompt}, which sets standing instructions and persona (``you are an expert
+competitive programmer, always think about edge cases''), and a \textbf{user message},
+which carries the actual task (``here is the problem, solve it''). This project holds the
+user message fixed and evolves \emph{only the system prompt}. That is the whole point:
+the task never changes, so any change in code quality is attributable to the wording of
+the standing instructions.
+\end{jargon}
+
+\begin{jargon}{Genetic algorithm (GA)}
+An optimisation method that copies biological evolution. You keep a \textbf{population} of
+candidate solutions. Each is scored by a \textbf{fitness function}. The fitter ones are
+more likely to be chosen as \textbf{parents}. Parents are combined (\textbf{crossover})
+and randomly tweaked (\textbf{mutation}) to make \textbf{offspring}, which form the next
+\textbf{generation}. Repeat. Over many generations the population drifts toward
+higher fitness. Nothing here understands the problem; it only knows which candidates
+scored better.
+\end{jargon}
+
+\subsection{The three design choices that define the project}
+
+\begin{enumerate}
+  \item \textbf{The chromosome is English prose.} In a textbook GA, a candidate solution is
+  a fixed-length vector of numbers or bits. Here a candidate is an entire
+  natural-language instruction prompt. This choice drives everything else, and it breaks
+  the usual GA guarantees (Section~\ref{sec:operators}).
+
+  \item \textbf{Fitness is objective and brutal.} A candidate prompt is not judged by
+  asking another model ``is this a good prompt?''. It is judged by: send the prompt plus a
+  real competitive-programming problem to Gemini, take the C++ it writes, \emph{actually
+  compile it} with \code{g++}, \emph{actually run} the resulting binary against the
+  problem's real test cases, and score the fraction of tests that pass. There is no room
+  to argue with a failed test.
+
+  \item \textbf{The genetic operators are themselves an LLM.} You cannot meaningfully
+  ``swap the second half'' of two English paragraphs and get English. So crossover and
+  mutation are performed by a second, stronger model (Gemini 2.5 Pro) which is asked to
+  merge, extend, trim or rephrase the prompt text.
+\end{enumerate}
+
+\begin{keyidea}{The one-sentence summary}
+A genetic algorithm whose population is English prompts, whose fitness is
+``does the C++ this prompt produced actually compile and pass the tests'', and whose
+crossover and mutation operators are a second LLM.
+\end{keyidea}
+
+\subsection{Provenance and honesty note}
+
+The repository contains a course paper (Computational Intelligence), co-authored with
+Ghufran Alvi; the implementation is Salman Adnan's work. Throughout this document, where a
+claim in the README or the paper conflicts with what the committed code and data actually
+show, \textbf{the code and data win}, and the conflict is called out in a red box. There
+are several, and two of them are substantial.
+
+\newpage
+%=============================================================================
+\section{Architecture: the whole system at a glance}
+%=============================================================================
+
+Two external systems sit outside the project's control: Google Cloud Vertex AI (which
+serves the Gemini models) and the local machine's C++ toolchain (\code{g++}). Everything
+else is ten Python files with no framework and no database.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}
+
+  % --- explicit grid, so nothing can collide ---
+  \node[box, minimum width=32mm] (main)      at ( 0.0,  0.0) {\textbf{main.py}\\orchestrator\\pre-flight, resume, holdout};
+  \node[box, minimum width=24mm] (config)    at (-5.2,  0.0) {\textbf{config.py}\\every constant};
+
+  \node[box, minimum width=30mm] (ga)        at ( 0.0, -2.8) {\textbf{ga.py}\\the GA loop\\Individual, selection,\\breed, fitness};
+  \node[box, minimum width=24mm] (seeds)     at (-5.2, -2.8) {\textbf{seeds.py}\\15 hand-written\\seed prompts};
+  \node[box, minimum width=24mm] (dataset)   at ( 5.2, -2.8) {\textbf{dataset.py}\\load + split\\APPS problems};
+
+  \node[box, minimum width=28mm] (llm)       at (-3.0, -6.0) {\textbf{llm.py}\\Gemini calls:\\code gen + operators};
+  \node[box, minimum width=28mm] (evaluator) at ( 3.0, -6.0) {\textbf{evaluator.py}\\compile, run,\\score};
+  \node[box, minimum width=26mm] (cost)      at (-7.6, -6.0) {\textbf{cost\_tracker.py}\\tokens + dollars\\per call};
+
+  \node[extbox, minimum width=30mm] (vertex) at (-3.0, -9.2) {Google Cloud Vertex AI\\(Gemini 2.5 Flash / Pro)};
+  \node[extbox, minimum width=30mm] (gpp)    at ( 3.0, -9.2) {local toolchain\\\code{g++ -O2 -std=c++23}};
+
+  \node[store, minimum width=18mm] (costs)   at (-7.6, -9.2) {Costs/};
+  \node[store, minimum width=18mm] (results) at ( 7.6, -6.0) {results/\\run\_*/};
+
+  \draw[flow] (config)    -- (main);
+  \draw[flow] (main)      -- (ga);
+  \draw[flow] (seeds)     -- (ga);
+  \draw[flow] (dataset)   -- (ga);
+  \draw[flow] (ga)        -- (llm);
+  \draw[flow] (ga)        -- (evaluator);
+  \draw[flow] (llm)       -- (vertex);
+  \draw[flow] (evaluator) -- (gpp);
+  \draw[flow] (llm)       -- (cost);
+  \draw[dflow] (cost)     -- (costs);
+  \draw[dflow] (ga.south east) -- node[lbl, pos=0.62] {checkpoints,\\eval logs} (results.west);
+
+\end{tikzpicture}}
+\caption{Module map. Solid arrows are calls; dashed arrows are writes to disk. Dashed
+boxes are systems outside the project: the model API and the C++ compiler. Every fitness
+number the project reports depends on both of them.}
+\end{figure}
+
+\subsection{Directory structure}
+
+\begin{figure}[H]
+\centering
+\begin{forest} dirtree
+[prompt-evolution-ga
+  [main.py, label=right:{\rmfamily\small entry point: pre-flight, GA, holdout eval}]
+  [ga.py, label=right:{\rmfamily\small the GA core (495 lines, the heart)}]
+  [llm.py, label=right:{\rmfamily\small Vertex AI client, code gen, operators}]
+  [evaluator.py, label=right:{\rmfamily\small compile, run, score}]
+  [dataset.py, label=right:{\rmfamily\small APPS loading and splitting}]
+  [seeds.py, label=right:{\rmfamily\small 15 seed prompts (only 5 are used)}]
+  [config.py, label=right:{\rmfamily\small all hyperparameters}]
+  [cost\_tracker.py, label=right:{\rmfamily\small token and dollar accounting}]
+  [run\_baseline\_eval.py, label=right:{\rmfamily\small evolved vs baseline on the test split}]
+  [visualize\_test\_results.py, label=right:{\rmfamily\small rebuilds the 5 comparison figures}]
+  [Dataset/APPS/
+    [train/, label=right:{\rmfamily\small 100 problems used here}]
+    [test/, label=right:{\rmfamily\small 200 problems used here}]
+  ]
+  [results/
+    [run\_20260429\_210411/, label=right:{\rmfamily\small tournament run}]
+    [run\_20260430\_014526/, label=right:{\rmfamily\small roulette run}]
+    [run\_20260430\_014530/, label=right:{\rmfamily\small elitism run}]
+    [comparison/, label=right:{\rmfamily\small the 4-way test-set comparison + figures}]
+  ]
+  [Costs/, label=right:{\rmfamily\small per-run cost reports}]
+  [corrections.tex, label=right:{\rmfamily\small loose patch notes for the paper}]
+]
+\end{forest}
+\caption{Repository layout. Of 1{,}428 tracked files, 1{,}201 are the APPS dataset and most
+of the rest are run artifacts; the actual program is ten Python files totalling roughly
+2{,}300 lines.}
+\end{figure}
+
+\newpage
+%=============================================================================
+\section{The evolutionary loop}
+\label{sec:loop}
+%=============================================================================
+
+This is the centre of the project. Everything else feeds it.
+
+\subsection{The cycle}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.86\textwidth}{!}{
+\begin{tikzpicture}
+
+  % --- left column: the main descent; right column: the breeding return path ---
+  \node[box, minimum width=40mm] (seed)      at ( 0.0,   0.0) {\textbf{Seed population}\\5 hand-written prompts\\\code{seeds.py}};
+  \node[box, minimum width=40mm] (evalpop)   at ( 0.0,  -2.7) {\textbf{Evaluate fitness}\\each prompt vs 65 problems\\\code{compute\_fitness}};
+  \node[dec, minimum width=26mm] (converged) at ( 0.0,  -5.6) {converged?\\CV $<$ 0.01\\for 3 gens};
+  \node[box, minimum width=40mm] (elite)     at ( 0.0,  -8.5) {\textbf{Carry elites}\\top \code{elitism} individuals\\pass through unchanged};
+  \node[box, minimum width=40mm] (select)    at ( 0.0, -11.2) {\textbf{Selection}\\tournament or roulette\\pick parents $p_1$, $p_2$};
+
+  \node[box, minimum width=40mm] (cross)     at ( 7.4, -11.2) {\textbf{Crossover} (rate 0.8)\\LLM merges $p_1$ and $p_2$\\else copy one parent};
+  \node[box, minimum width=40mm] (mutate)    at ( 7.4,  -8.5) {\textbf{Mutation}\\inject 0.25 / delete 0.15\\/ rephrase 0.10 (LLM)};
+  \node[box, minimum width=40mm] (offspring) at ( 7.4,  -5.6) {\textbf{Offspring}\\fill population to 5\\then evaluate fitness};
+
+  \node[box, minimum width=36mm, fill=white, draw=warnred, text=warnred]
+       (done) at (-6.6, -8.5) {\textbf{Return best}\\then 200-problem\\holdout evaluation};
+
+  \draw[flow] (seed)    -- (evalpop);
+  \draw[flow] (evalpop) -- (converged);
+  \draw[flow] (converged) -- node[lbl, pos=0.5] {no} (elite);
+  \draw[flow] (elite)   -- (select);
+  \draw[flow] (select)  -- (cross);
+  \draw[flow] (cross)   -- (mutate);
+  \draw[flow] (mutate)  -- (offspring);
+
+  % return path: straight up the right column, then left into evaluate. Crosses nothing.
+  \draw[flow] (offspring.north) -- node[lbl, pos=0.72] {next\\generation} ($(offspring.north)+(0,1.4)$) -- (evalpop.east);
+
+  % exit: out to the left, clear of every box in the centre column
+  \draw[flow] (converged.west) -- node[lbl, pos=0.62] {yes, or\\gen $=$ 12} (-6.6,-5.6) -- (done.north);
+
+\end{tikzpicture}}
+\caption{The generational cycle, as implemented in \code{ga.run}. The population is fully
+replaced every generation except for the elites. With the shipped settings the loop runs
+12 generations over a population of 5.}
+\end{figure}
+
+\subsection{The loop in pseudocode}
+
+\begin{pseudocode}{ga.run: the generational loop (condensed from ga.py, lines 312-495)}
+\Step{\textbf{input:} seed\_prompts (5), problems (65), scheme, elitism}
+\Step{\textbf{output:} best individual, fitness history}
+\Step{}
+\Step{rng $\leftarrow$ Random(RANDOM\_SEED = 42)}
+\Step{select $\leftarrow$ roulette\_select if scheme = "roulette" else tournament\_select}
+\Step{}
+\Step{\textbf{if} resuming \textbf{then}}
+\Indent{population $\leftarrow$ checkpoint.population;  restore rng state}
+\Step{\textbf{else}}
+\Indent{population $\leftarrow$ [Individual(p) for p in seed\_prompts]}
+\Indent{\textbf{for each} ind in population:}
+\Indent{\hspace*{2em} \textbf{if} a seed checkpoint exists: restore its fitness (skip re-evaluating)}
+\Indent{\hspace*{2em} \textbf{else}: ind.fitness $\leftarrow$ compute\_fitness(ind, problems); write checkpoint}
+\Step{}
+\Step{stagnant $\leftarrow$ 0}
+\Step{\textbf{for} gen = 1 \textbf{to} GENERATIONS (12):}
+\Indent{sort population by fitness, descending}
+\Indent{stats $\leftarrow$ \{best, mean, worst, std, cv\} over the population}
+\Indent{append stats to history;  save checkpoint of generation gen-1}
+\Indent{}
+\Indent{\textbf{if} 0 $\le$ cv $<$ 0.01 \textbf{then}  // population has gone homogeneous}
+\Indent{\hspace*{2em} stagnant $\leftarrow$ stagnant + 1}
+\Indent{\hspace*{2em} \textbf{if} stagnant $\ge$ 3: \textbf{break}   // converged, stop early}
+\Indent{\textbf{else} stagnant $\leftarrow$ 0}
+\Indent{}
+\Indent{new\_pop $\leftarrow$ population[0 : elitism]        // elites survive untouched}
+\Indent{off\_idx $\leftarrow$ 0}
+\Indent{\textbf{while} |new\_pop| $<$ POPULATION\_SIZE (5):}
+\Indent{\hspace*{2em} $p_1 \leftarrow$ select(population, rng)}
+\Indent{\hspace*{2em} $p_2 \leftarrow$ select(population, rng)}
+\Indent{\hspace*{2em} allow\_mut $\leftarrow$ (off\_idx $\ge$ CROSSOVER\_ONLY\_SLOTS = 2)}
+\Indent{\hspace*{2em} new\_pop.append( breed($p_1$, $p_2$, rng, allow\_mut) )}
+\Indent{\hspace*{2em} off\_idx $\leftarrow$ off\_idx + 1}
+\Indent{}
+\Indent{\textbf{for each} child in new\_pop[elitism:]:      // elites keep their old score}
+\Indent{\hspace*{2em} child.fitness $\leftarrow$ compute\_fitness(child, problems)}
+\Indent{}
+\Indent{population $\leftarrow$ new\_pop;  sort descending}
+\Step{}
+\Step{append final stats to history}
+\Step{\textbf{return} population[0], history}
+\end{pseudocode}
+
+\begin{keyidea}{The two details in that loop worth remembering}
+\textbf{Crossover-only slots.} The first two offspring of every generation
+(\code{CROSSOVER\_ONLY\_SLOTS = 2}) are bred with mutation switched off. This deliberately
+reserves part of each generation for pure recombination, so mutation cannot scramble every
+child.
+
+\textbf{Elites are not re-evaluated.} An elite carries its old fitness number forward
+rather than being re-scored. Since the LLM is called at temperature 0 this is defensible,
+but it does mean an elite's fitness is a measurement from an earlier generation, never
+refreshed.
+\end{keyidea}
+
+\subsection{The Individual}
+
+\begin{lstlisting}[language=Python, caption={ga.py, lines 49-58. The chromosome and its provenance.}]
+@dataclass
+class Individual:
+    prompt: str                     # THE CHROMOSOME: an English instruction prompt
+    fitness: float = -1.0           # mean pass rate; -1.0 means "not yet evaluated"
+    uid: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    parent_a: str = ""              # uid of parent A  \
+    parent_b: str = ""              # uid of parent B   |  genealogy
+    operators: str = ""             # e.g. "crossover+inject"  |
+    intermediate_steps: dict = field(default_factory=dict)  # /  prompt after each operator
+    failure_examples: list = field(default_factory=list)    # feeds the inject mutation
+\end{lstlisting}
+
+\begin{jargon}{Dataclass}
+A Python shorthand that turns a list of named fields into a class, generating the
+boilerplate constructor automatically. \code{@dataclass} above the class is what triggers
+it. \code{field(default\_factory=...)} is needed for defaults that must be freshly created
+per instance (a new random \code{uid}, a new empty list), rather than shared between all
+instances.
+\end{jargon}
+
+The last four fields are the project's most interesting engineering idea. Because
+LLM-mediated operators do not preserve structure, an offspring can silently wander away
+from what its parents encoded. \code{parent\_a}, \code{parent\_b}, \code{operators} and
+\code{intermediate\_steps} record the full derivation of every individual, so you can
+reconstruct after the fact whether an operator helped or just scrambled a good prompt.
+\code{intermediate\_steps} stores the prompt text after \emph{each} operator in the chain
+(\code{after\_crossover}, \code{after\_inject}, \code{after\_delete},
+\code{after\_rephrase}), so a bad step can be pinpointed. Section~\ref{sec:genealogy}
+covers what happened when this data was actually used.
+
+\newpage
+%=============================================================================
+\section{Selection: three schemes}
+%=============================================================================
+
+Selection decides which individuals get to be parents. The project implements two
+mechanisms and exposes three schemes over them via \code{--scheme}.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}
+
+  % tournament
+  \node[font=\bfseries\small, text=inkblue] at (0,2.6) {Tournament selection (TOURNAMENT\_SIZE = 3)};
+  \node[box, minimum width=8mm] (a1) at (-2.6,1.6) {0.62};
+  \node[box, minimum width=8mm] (a2) at (-1.4,1.6) {0.71};
+  \node[box, minimum width=8mm] (a3) at (-0.2,1.6) {0.55};
+  \node[box, minimum width=8mm] (a4) at (1.0,1.6) {0.68};
+  \node[box, minimum width=8mm] (a5) at (2.2,1.6) {0.60};
+  \node[lbl] at (4.4,1.6) {population of 5};
+
+  \node[box, minimum width=8mm, draw=accent, very thick] (b1) at (-1.4,0.2) {0.71};
+  \node[box, minimum width=8mm, draw=accent, very thick] (b2) at (-0.2,0.2) {0.55};
+  \node[box, minimum width=8mm, draw=accent, very thick] (b3) at (1.0,0.2) {0.68};
+  \node[lbl] at (4.4,0.2) {sample 3 at random};
+
+  \node[box, minimum width=8mm, fill=softgrey, draw=okgreen, very thick] (w) at (-1.4,-1.2) {0.71};
+  \node[lbl] at (4.4,-1.2) {highest fitness wins};
+
+  \draw[flow] (a2) -- (b1); \draw[flow] (a3) -- (b2); \draw[flow] (a4) -- (b3);
+  \draw[flow] (b1) -- (w);
+
+  % roulette
+  \node[font=\bfseries\small, text=inkblue] at (11,2.6) {Roulette selection (fitness-proportional)};
+
+  \fill[accent!70] (8.2,0.2) rectangle (10.0,0.9);
+  \fill[accent!45] (10.0,0.2) rectangle (12.1,0.9);
+  \fill[accent!25] (12.1,0.2) rectangle (13.7,0.9);
+  \fill[accent!12] (13.7,0.2) rectangle (14.9,0.9);
+  \draw[draw=inkblue] (8.2,0.2) rectangle (14.9,0.9);
+
+  \node[font=\scriptsize, text=inkblue] at (9.1,0.55) {ind A};
+  \node[font=\scriptsize, text=inkblue] at (11.05,0.55) {ind B};
+  \node[font=\scriptsize, text=inkblue] at (12.9,0.55) {ind C};
+  \node[font=\scriptsize, text=inkblue] at (14.3,0.55) {D};
+
+  \node[lbl, align=center] at (11.5,1.5) {each individual's slice is proportional to its fitness};
+
+  \draw[flow, draw=warnred, very thick] (11.6,-0.9) -- (11.6,0.15);
+  \node[lbl, text=warnred] at (11.6,-1.3) {$r \sim \mathrm{Uniform}(0,\ \sum \mathrm{fitness})$ lands here $\rightarrow$ ind B};
+
+\end{tikzpicture}}
+\caption{The two selection mechanisms. Tournament applies constant pressure regardless of
+the fitness \emph{scale}; roulette's pressure collapses when everyone scores similarly,
+which is exactly what happens here (all fitness values sit near 0.65).}
+\end{figure}
+
+\subsection{The three schemes, and what actually distinguishes them}
+
+\begin{lstlisting}[language=Python, caption={ga.py lines 329-333, plus main.py line 357. How --scheme maps onto behaviour.}]
+# in ga.run:
+scheme  = selection_scheme.lower()
+select  = roulette_select if scheme == "roulette" else tournament_select
+elitism = elitism_count if elitism_count is not None else config.ELITISM_COUNT
+
+# in main.py, the only place elitism_count is ever passed:
+elitism_count = 1 if args.scheme == "elitism" else None
+\end{lstlisting}
+
+So the three schemes decompose into just two independent switches:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\toprule
+\code{--scheme} & selection function & elitism & note \\
+\midrule
+\code{tournament} (default) & \code{tournament\_select} & \code{config.ELITISM\_COUNT} = 0 & \\
+\code{roulette}            & \code{roulette\_select}   & \code{config.ELITISM\_COUNT} = 0 & \\
+\code{elitism}             & \code{tournament\_select} & 1 (hardcoded in \code{main.py}) & tournament + elitism \\
+\bottomrule
+\end{tabular}
+\caption{The \code{elitism} scheme is not a third selection mechanism. It is the
+\code{tournament} scheme with one elite. The paper's own corrections file confirms this
+reading.}
+\end{table}
+
+\begin{honest}{The scheme names oversell the experiment}
+Presented as ``three selection schemes'', the experiment is really a $2 \times 1$ design:
+two selection mechanisms (tournament, roulette) at elitism 0, plus one extra cell
+(tournament at elitism 1). Roulette-with-elitism was never run. So the results cannot
+separate ``elitism helps'' from ``elitism helps \emph{tournament}'', and there is no way to
+tell whether the elitism run's distinct behaviour comes from the elite or from an
+interaction. With a population of 5 and one run per cell, no scheme comparison here can
+carry statistical weight; there is no repetition to average over.
+\end{honest}
+
+\subsection{Roulette selection, and its guard}
+
+\begin{lstlisting}[language=Python, caption={ga.py, lines 245-256.}]
+def roulette_select(population, rng):
+    fits  = [max(ind.fitness, 0.0) for ind in population]   # clamp: -1.0 sentinel -> 0.0
+    total = sum(fits)
+    if total == 0:
+        return rng.choice(population)                       # degenerate: pick uniformly
+    r   = rng.uniform(0, total)
+    cum = 0.0
+    for ind, f in zip(population, fits):
+        cum += f
+        if cum >= r:
+            return ind
+    return population[-1]                                   # float-rounding safety net
+\end{lstlisting}
+
+Two defensive details worth noticing. The \code{max(ind.fitness, 0.0)} clamp matters
+because \code{-1.0} is the project's sentinel for ``infrastructure failed, this is not a
+real score''; without the clamp a negative would corrupt the running total and could make
+the cumulative sum non-monotonic. The trailing \code{return population[-1]} catches the
+case where floating-point rounding leaves \code{cum} a hair below \code{r} after the last
+individual. Neither is exotic, but both are the kind of thing that is quietly wrong in most
+first drafts.
+
+\newpage
+%=============================================================================
+\section{The operators: crossover and mutation by LLM}
+\label{sec:operators}
+%=============================================================================
+
+\begin{keyidea}{Why the operators had to be an LLM}
+A classic GA chromosome is a fixed-length vector, so crossover is ``take the first $k$
+genes from A and the rest from B'', and mutation is ``flip a random bit''. Both preserve
+validity by construction: the result is always a well-formed chromosome.
+
+An English paragraph has no such structure. Splicing the first half of one paragraph onto
+the second half of another produces something that is not a valid instruction prompt. So
+this project delegates the operators to Gemini 2.5 Pro and asks it, in English, to merge or
+edit the prompts. The result is always fluent English. It is \emph{not} always related to
+its parents, and that is the trade (see the honest box at the end of this section).
+\end{keyidea}
+
+\subsection{breed(): the offspring pipeline}
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}
+
+  \node[box, minimum width=22mm] (pa) at (0.0,  0.9) {parent A\\prompt};
+  \node[box, minimum width=22mm] (pb) at (0.0, -0.9) {parent B\\prompt};
+
+  \node[dec, minimum width=18mm] (d1) at (3.4, 0.0) {rng $<$ 0.8?};
+
+  \node[box, minimum width=26mm] (xo)   at (7.4,  1.5) {\textbf{llm.crossover}\\Gemini 2.5 Pro\\merges both};
+  \node[box, minimum width=26mm] (copy) at (7.4, -1.5) {\textbf{copy}\\pick one parent\\at random};
+
+  \node[dec, minimum width=18mm] (d2) at (11.4, 0.0) {mutation\\allowed?};
+
+  \node[box, minimum width=30mm] (inj) at (15.8,  3.0) {\textbf{inject} (p $=$ 0.25)\\add a strategy,\\conditioned on failures};
+  \node[box, minimum width=30mm] (del) at (15.8,  0.0) {\textbf{delete} (p $=$ 0.15)\\drop the weakest\\sentence};
+  \node[box, minimum width=30mm] (rep) at (15.8, -3.0) {\textbf{rephrase} (p $=$ 0.10)\\same meaning,\\new words};
+
+  \node[box, minimum width=26mm, draw=okgreen] (child) at (20.6, 0.0) {\textbf{offspring}\\+ parents, ops,\\intermediate\_steps};
+
+  \draw[flow] (pa) -- (d1); \draw[flow] (pb) -- (d1);
+  \draw[flow] (d1) -- node[lbl, pos=0.45] {yes} (xo);
+  \draw[flow] (d1) -- node[lbl, pos=0.45] {no} (copy);
+  \draw[flow] (xo) -- (d2); \draw[flow] (copy) -- (d2);
+  \draw[flow] (d2) -- node[lbl, pos=0.5] {yes} (inj);
+  \draw[flow] (d2) -- (del);
+  \draw[flow] (d2) -- (rep);
+  \draw[flow] (inj) -- (child); \draw[flow] (del) -- (child); \draw[flow] (rep) -- (child);
+
+  % bypass: routed well below the rephrase box so the label sits in clear space
+  \draw[dflow] (d2.south) -- (11.4,-5.2)
+      -- node[lbl, pos=0.5] {no (first 2 offspring):\\straight to offspring} (20.6,-5.2) -- (child.south);
+
+\end{tikzpicture}}
+\caption{\code{ga.breed}, lines 259-309. The three mutations are independent coin flips
+applied in sequence, not a choice of one: an offspring can receive all three, or none.}
+\end{figure}
+
+The three mutation probabilities (0.25, 0.15, 0.10) are independent, so the chance an
+offspring escapes mutation entirely is $(1-0.25)(1-0.15)(1-0.10) \approx 0.574$, and the
+chance it gets all three is $0.25 \times 0.15 \times 0.10 = 0.00375$. The expected number of
+mutations per mutable offspring is $0.25+0.15+0.10 = 0.5$.
+
+\subsection{The empty-result guard, repeated four times}
+
+\begin{lstlisting}[language=Python, caption={ga.py lines 271-298. The pattern that keeps a failed LLM call from destroying a chromosome.}]
+if rng.random() < config.CROSSOVER_RATE:
+    res    = llm.crossover(pa.prompt, pb.prompt)
+    prompt = res if res.strip() else rng.choice([pa.prompt, pb.prompt])  # fall back
+    ops.append("crossover")
+else:
+    prompt = rng.choice([pa.prompt, pb.prompt])
+    ops.append("copy")
+
+steps["after_crossover"] = prompt
+
+if allow_mutation:
+    if rng.random() < config.MUT_INJECT_PROB:
+        res    = llm.mutate_inject(prompt, failure_examples=combined_fails)
+        prompt = res if res.strip() else prompt      # empty -> keep previous prompt
+        ops.append("inject")
+        steps["after_inject"] = prompt
+    # ... delete and rephrase repeat the identical shape
+\end{lstlisting}
+
+Every operator is wrapped in the same guard: if the model returns nothing usable, keep what
+you had. This is the right instinct. A silent empty string from an API would otherwise
+propagate an empty prompt into the population, and an empty prompt would score near zero
+and pollute the generation.
+
+\begin{honest}{The guard checks that output exists, not that it is complete}
+\code{res.strip()} is truthy for \emph{any} non-blank text, including text the model was cut
+off mid-word producing. That is not hypothetical here: it is exactly what happened, and it
+is documented in Section~\ref{sec:truncation}. The right check is a completeness check
+(does the prompt end at a sentence boundary? was the response truncated by the token cap?),
+and the code does not do one.
+
+Note also that \code{ops.append("inject")} runs \emph{unconditionally} once the coin flip
+passes, even when the call came back empty and the prompt was left unchanged. So the
+\code{operators} string can claim an individual was injected when nothing was injected. Any
+later analysis of ``which operators helped'' inherits that error.
+\end{honest}
+
+\subsection{Failure-conditioned mutation: the best idea in the project}
+
+The \code{inject} mutation is not blind. It is fed real failures from the parents' most
+recent evaluation, so the model is asked to add a strategy targeting problems the parents
+\emph{actually got wrong}.
+
+\begin{lstlisting}[language=Python, caption={llm.py, lines 281-303. Building the failure-conditioned mutation prompt.}]
+def mutate_inject(prompt: str, failure_examples: list | None = None) -> str:
+    hint = ""
+    if failure_examples:
+        lines = []
+        for f in failure_examples[:3]:
+            line = f"  - Problem {f['problem_id']} (rating {f.get('rating','?')}): reason={f['reason']}"
+            if f.get("compile_error"):
+                line += f", compile_error={f['compile_error'][:80]!r}"
+            elif f.get("expected"):
+                line += f", expected={f['expected'][:60]!r}, actual={f['actual'][:60]!r}"
+            lines.append(line)
+        hint = ("\n\nRecent failure examples (address at least one):\n" + "\n".join(lines)
+                + "\nAdd a strategy that targets these specific failure patterns.")
+
+    user = ("Add one new, specific coding strategy to this instruction prompt. "
+            "Examples: 'validate your output against the examples', "
+            "'consider time complexity', 'check for off-by-one errors'."
+            f"{hint}\n\nOutput only the modified prompt.\n\nPrompt:\n{prompt}")
+\end{lstlisting}
+
+\begin{keyidea}{Why this is a genuinely good design}
+This turns a blind random mutation into a directed one. A standard GA mutation has no idea
+\emph{why} an individual is weak; it perturbs at random and lets selection sort it out. Here
+the mutation operator gets told ``your parents failed problem train/2015 with a compile
+error, and problem test/0042 by printing 3 where 4 was expected''. That is a gradient
+signal smuggled into a gradient-free method, and it is the closest thing the project has to
+a genuinely novel idea.
+\end{keyidea}
+
+The failures are chosen by \code{\_pick\_failures} (\code{ga.py}, lines 217-228), which
+sorts failures by a priority ranking (compile failures first, then total failures, then
+partial passes) and keeps at most five. \code{breed} then merges both parents' failure
+lists, de-duplicating by \code{problem\_id}, and caps at five.
+
+\begin{honest}{\_pick\_failures has a logic bug that defeats its own diversity intent}
+\begin{lstlisting}[language=Python]
+for f in fails:
+    if f["reason"] not in seen or len(picked) < 3:   # <-- the "or" is the bug
+        picked.append(f)
+        seen.add(f["reason"])
+    if len(picked) >= 5:
+        break
+\end{lstlisting}
+The evident intent is ``take one example per distinct failure reason, for variety''. But
+\code{or len(picked) < 3} short-circuits that: while fewer than three are picked, the
+condition is true \emph{regardless} of whether the reason was already seen. Since the list
+is pre-sorted by reason priority, the first three picks are typically all the
+\emph{same} reason (three compile failures, say). Only picks four and five apply the
+distinct-reason rule. The operator therefore usually sees a less varied failure sample than
+intended. Changing \code{or} to \code{and} would not fix it either; the loop needs
+restructuring. This is invisible at runtime because nothing checks it, and it degrades the
+project's best idea.
+\end{honest}
+
+\subsection{The output directives}
+
+Both the code generator and the operators are wrapped in blunt, almost shouted formatting
+directives (\code{\_CODE\_GEN\_DIRECTIVE} and \code{\_OPERATOR\_DIRECTIVE},
+\code{llm.py} lines 45-69), forbidding markdown fences, preamble and commentary. This is
+defensive prompt engineering: the pipeline needs raw C++ or raw prompt text, and any
+``Here is your solution:'' preamble would be fed to the compiler.
+
+Notice the layered defence: the directive tells the model not to emit code fences, and
+\emph{then} \code{evaluator.extract\_code} strips code fences anyway. Belt and braces, and
+correct: the directive reduces the failure rate, the extractor handles the residue.
+
+\begin{honest}{The operator directives are a chromosome contaminant}
+\code{\_CODE\_GEN\_DIRECTIVE} is appended to every candidate prompt at evaluation time, so
+every individual is really ``evolved prompt + a fixed 700-character block of shouting''.
+The block is constant across all individuals, so it cannot bias the \emph{comparison}
+between prompts. But it does mean the fitness landscape being searched is the landscape
+\emph{given} that directive: the evolved prompts are not standalone artifacts, and quoting
+one in a paper without the directive misrepresents what was measured. The README does not
+mention this, and the paper's Table of parameters does not either.
+\end{honest}
+
+\newpage
+%=============================================================================
+\section{Fitness: the compile-and-run pipeline}
+%=============================================================================
+
+This is the part of the project that makes it defensible. Fitness is not an opinion.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}
+
+  % --- row 1, left to right: generate the code and compile it ---
+  \node[box, minimum width=26mm]    (in)      at ( 0.0,  0.0) {candidate prompt\\(the chromosome)\\$+$ APPS problem};
+  \node[box, minimum width=28mm]    (call)    at ( 4.2,  0.0) {\textbf{llm.generate\_code}\\system $=$ prompt $+$ directive\\user $=$ question $+$ rules};
+  \node[extbox, minimum width=26mm] (gemini)  at ( 4.2,  2.9) {Gemini 2.5 Flash\\temperature 0.0\\thinking budget 512};
+  \node[box, minimum width=24mm]    (extract) at ( 8.4,  0.0) {\textbf{extract\_code}\\strip code fences,\\else use raw text};
+  \node[box, minimum width=24mm]    (compile) at (12.2,  0.0) {\textbf{\_compile}\\\code{g++ -O2 -std=c++23}\\15 s timeout};
+  \node[dec, minimum width=18mm]    (ok)      at (15.8,  0.0) {compiled?};
+  \node[box, minimum width=26mm, draw=warnred] (fail) at (19.8, 0.0) {score $=$ 0.0\\reason $=$ \code{compile\_fail}};
+
+  % --- row 2, right to left: run the binary and score it ---
+  \node[box, minimum width=28mm] (run)   at (15.8, -4.8) {\textbf{\_run\_one}, per test case\\pipe stdin, capture stdout\\2 s timeout, own process group};
+  \node[box, minimum width=26mm] (cmp)   at (11.0, -4.8) {\textbf{\_match}\\strip trailing whitespace\\per line, compare exactly};
+  \node[dec, minimum width=20mm] (early) at ( 6.4, -4.8) {3 consecutive\\failures?};
+  \node[box, minimum width=28mm, draw=okgreen] (score) at ( 1.6, -4.8) {\textbf{score} $=$ passed / total\\reason $\in$ \{perfect,\\partial\_pass, all\_fail, ...\}};
+
+  \draw[flow] (in)      -- (call);
+  \draw[flow] (gemini)  -- (call);
+  \draw[flow] (call)    -- (extract);
+  \draw[flow] (extract) -- (compile);
+  \draw[flow] (compile) -- (ok);
+  \draw[flow] (ok) -- node[lbl, pos=0.45] {no} (fail);
+  \draw[flow] (ok) -- node[lbl, pos=0.5] {yes} (run);
+  \draw[flow] (run)   -- (cmp);
+  \draw[flow] (cmp)   -- (early);
+  \draw[flow] (early) -- node[lbl, pos=0.5] {yes:\\stop early} (score);
+
+  % loop back for the next test case, routed clear underneath both boxes
+  \draw[flow] (early.south) -- (6.4,-7.4)
+      -- node[lbl, pos=0.5] {no: next test case} (15.8,-7.4) -- (run.south);
+
+\end{tikzpicture}}
+\caption{One fitness measurement for one prompt against one problem
+(\code{evaluator.run\_tests\_verbose}). An individual's fitness is the mean of this over all
+65 evolution problems, computed 5-way in parallel.}
+\end{figure}
+
+\subsection{Sandboxing: the details that matter}
+
+\begin{lstlisting}[language=Python, caption={evaluator.py, lines 12-19 and 88-106. Killing a runaway program properly.}]
+def _kill_group(proc):
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)   # kill the whole process GROUP
+    except (ProcessLookupError, PermissionError):
+        try: proc.kill()                                   # fall back to just the child
+        except Exception: pass
+
+# every subprocess is launched with:
+proc = subprocess.Popen([...], preexec_fn=os.setsid, ...)  # new session => new process group
+\end{lstlisting}
+
+\begin{jargon}{Process group, and why \code{proc.kill()} is not enough}
+When a program starts other programs, they normally form a family tree. \code{proc.kill()}
+kills only the one process you launched. If the generated C++ had spawned children, or if
+the compiler forks (which \code{g++} does: it is a driver that runs \code{cc1plus},
+\code{as} and \code{ld}), killing the parent leaves orphans running and consuming CPU
+forever. \code{os.setsid} puts each launched program into its own \emph{process group}, and
+\code{os.killpg} kills every process in that group at once. Over three runs of roughly
+13{,}000 model calls each producing a compile and up to a few dozen executions, that
+distinction is the difference between a machine that survives the night and one that does
+not.
+\end{jargon}
+
+Other real defences here: a 15 second compile timeout and a 2 second execution timeout
+(\code{config.COMPILE\_TIMEOUT}, \code{config.EXEC\_TIMEOUT}); \code{stderr} redirected to
+\code{DEVNULL} so a chatty program cannot fill a pipe buffer and deadlock; captured
+input/output truncated to 500 characters (\code{\_MAX\_IO\_LEN}) before being logged, so a
+program that prints a megabyte cannot bloat the JSONL logs; and the temporary source and
+binary files cleaned up in a \code{finally} block.
+
+\begin{honest}{This is a timeout, not a sandbox}
+The generated C++ is compiled and executed on the host with the user's own privileges and
+no isolation: no container, no seccomp filter, no user namespace, no filesystem or network
+restriction. A model that emitted code calling \code{system("rm -rf ~")}, or opening a
+socket, would be obeyed. The 2 second timeout bounds \emph{how long} arbitrary code runs,
+not \emph{what} it can do.
+
+In practice the risk is low: the inputs are benign competitive-programming problems and the
+model has no motive. But ``we ran 13{,}000 pieces of model-written C++ on the host,
+unsandboxed'' is the honest description, and it is a fair thing for an interviewer to
+press on. The fix is well-trodden (run the binary in a container, or under
+\code{bubblewrap}, or as a nobody user in a chroot) and the code is structured such that it
+would be a change to \code{\_run\_one} alone.
+\end{honest}
+
+\subsection{Early stopping, and how it deflates scores}
+
+\begin{lstlisting}[language=Python, caption={evaluator.py, lines 146-180. Note which denominator the score uses.}]
+for i in range(n):
+    actual = _run_one(bin_path, inputs[i], timeout)
+    ok     = actual is not None and _match(actual, outputs[i])
+    res["tests_run"] = i + 1
+    if ok:
+        passed += 1
+        fails   = 0          # the counter RESETS on a pass: 3 CONSECUTIVE failures needed
+    else:
+        fails += 1
+        if fails >= config.EARLY_STOP_FAILURES:   # = 3
+            res["early_stopped"] = True
+            break
+
+res["score"] = passed / n    # <-- n is the TOTAL test count, not tests_run
+\end{lstlisting}
+
+Two things are happening, and only one is obvious:
+
+\begin{enumerate}
+  \item \textbf{Early stopping is a cost control.} Once a program has failed three tests in
+  a row, it is almost certainly wrong, so the remaining tests are skipped. Over 65 problems
+  $\times$ 5 individuals $\times$ 12 generations that saves a lot of wall-clock time.
+
+  \item \textbf{The score divides by the total, not by the tests actually run.} When a run
+  stops early at test 4 of 30, the score is $\mathrm{passed}/30$, not $\mathrm{passed}/4$.
+  The 27 unrun tests are silently counted as failures.
+\end{enumerate}
+
+This second point is a deliberate and correct choice: assuming the unrun tests would have
+failed is the conservative reading, and it keeps the score comparable between an
+early-stopped evaluation and a complete one. It is worth being able to state clearly,
+because it looks like a bug and is not.
+
+\begin{honest}{Exact-match comparison is strict, and quietly wrong for some problems}
+\code{\_match} normalises by stripping trailing whitespace from each line and comparing the
+line lists for exact equality. That means a \emph{correct} program is scored as failing if
+it prints \code{3.14159} where the expected file says \code{3.14160}, or if it picks a
+different but equally valid answer to a problem with multiple correct outputs. APPS contains
+both categories.
+
+The README argues this ``deflates every prompt's score by roughly the same amount''. That
+is probably true on average and is a reasonable defence, \emph{but it is not free}: it also
+injects noise into the fitness landscape the GA is trying to climb, and with a population of
+5 there is little averaging to damp it. A per-problem checker (float tolerance, answer-set
+comparison) is the correct fix and the README says so.
+
+A smaller note: the README refers to this logic as ``\code{\_normalise}/\code{\_compare} in
+\code{evaluator.py}, line 41''. There is no function called \code{\_compare}; it is
+\code{\_match}, at line 40. Minor, but it is the kind of thing an interviewer checks.
+\end{honest}
+
+\subsection{Parallelism}
+
+\begin{lstlisting}[language=Python, caption={ga.py, lines 189-208. Five problems evaluated at once.}]
+with ThreadPoolExecutor(max_workers=config.PARALLEL_EVALS) as executor:   # = 5
+    futures = {executor.submit(_eval_one_problem, gen, ind, prob, i, len(problems)): i
+               for i, prob in enumerate(problems)}
+    for future in as_completed(futures):
+        idx = futures[future]
+        try:
+            score, f = future.result()
+            scores[idx] = score
+            if f is not None:
+                with lock: fails.append(f)
+        except Exception as exc:
+            _log(f"ind={ind.uid}  prob={idx+1}  UNEXPECTED ERROR: {exc}", level="ERROR")
+            scores[idx] = -1.0
+\end{lstlisting}
+
+\begin{jargon}{Thread pool, and why threads are the right choice here}
+A \textbf{thread} lets one program do several things at once. Python's threads are limited
+by the Global Interpreter Lock, so they cannot speed up pure Python computation. But they
+are perfectly good at \emph{waiting}, and waiting is all this workload does: waiting for a
+network reply from Gemini, and waiting for \code{g++} and the test binary (both separate
+processes). \code{ThreadPoolExecutor(max\_workers=5)} keeps five such waits in flight.
+\code{as\_completed} yields futures as they finish, in completion order, which is why the
+code keys a dictionary from future back to index rather than relying on order.
+\end{jargon}
+
+The pool size of 5 is a rate-limit compromise, not a hardware one. There is also a
+deliberate jitter, \code{time.sleep(random.uniform(0, 1))} at the top of every evaluation
+(\code{ga.py} line 167) and \code{uniform(0, 2)} in the holdout path, to stop five threads
+from hitting the API in the same instant at the start of each batch.
+
+The exception handler writes \code{-1.0}, the ``this is not a real score'' sentinel, rather
+than 0.0. That distinction is carried carefully: \code{-1.0} means infrastructure broke,
+0.0 means the model genuinely produced code that failed everything.
+
+\begin{honest}{The sentinel is honest inside a generation and lost at the boundary}
+\code{compute\_fitness} computes \code{sum(scores) / len(scores)} over the raw list, so a
+\code{-1.0} sentinel is averaged in \emph{as a negative number}. An individual that hit one
+infrastructure failure across 65 problems is therefore penalised by roughly $1/65 \approx
+0.0154$ of fitness more than an individual whose code merely failed every test on that
+problem. It is a small effect, and arguably an acceptable one (it makes flaky individuals
+slightly less attractive), but it is not what a reader would assume, and the distinction the
+\code{-1.0} sentinel exists to preserve is silently discarded at exactly the point it
+mattered. The generation-level statistics are more careful: they filter to
+\code{valid = [f for f in fits if f >= 0.0]} before computing standard deviation. So the
+same sentinel is treated two different ways within thirty lines of each other.
+\end{honest}
+
+\newpage
+%=============================================================================
+\section{The dataset and the split}
+%=============================================================================
+
+\begin{jargon}{APPS, and Codeforces ratings}
+\textbf{APPS} (Hendrycks et al., 2021) is a benchmark of programming problems scraped from
+sites like Codeforces, each with a problem statement, a set of test inputs and their
+expected outputs. \textbf{Codeforces rating} is a difficulty number: 800 is beginner-level,
+1900 is genuinely hard. The project's subset spans 800 to 1900.
+\end{jargon}
+
+\code{dataset.py} does not scan directories. It hardcodes an explicit registry
+(\code{\_SELECTED}, lines 9-58) of exactly which problem folders to load, grouped by split
+and rating. Verified by running it: 300 problems load, 100 from \code{train/} and 200 from
+\code{test/}.
+
+\begin{figure}[H]
+\centering
+\resizebox{0.92\textwidth}{!}{
+\begin{tikzpicture}[node distance=9mm]
+
+  \node[store, minimum width=26mm] (all) {300 problems\\\code{\_SELECTED} registry};
+
+  \node[box, right=16mm of all, minimum width=26mm, yshift=20mm] (train) {\textbf{train/} split\\100 problems\\ratings 800-1900};
+  \node[box, right=16mm of all, minimum width=26mm, yshift=-16mm] (test) {\textbf{test/} split\\200 problems\\ratings 800-1400};
+
+  \node[box, right=16mm of train, minimum width=30mm, yshift=13mm] (hard) {rating $\ge$ 1800\\\textbf{5 problems}\\always in evo pool};
+  \node[box, right=16mm of train, minimum width=30mm, yshift=-13mm] (tiers) {rating $<$ 1800\\stratified quota\\per \code{\_EVOLUTION\_PER\_TIER}};
+
+  \node[box, right=16mm of $(hard)!0.5!(tiers)$, minimum width=26mm, draw=okgreen] (evo) {\textbf{evolution pool}\\\textbf{65 problems}\\fitness is measured here};
+
+  \node[box, right=16mm of test, minimum width=26mm, draw=warnred] (hold) {\textbf{holdout}\\\textbf{200 problems}\\touched once, at the end};
+
+  \node[box, below=8mm of hold, minimum width=26mm] (rest) {\textbf{rest}\\35 problems\\unused};
+
+  \draw[flow] (all) -- (train);
+  \draw[flow] (all) -- (test);
+  \draw[flow] (train) -- (hard);
+  \draw[flow] (train) -- (tiers);
+  \draw[flow] (hard) -- (evo);
+  \draw[flow] (tiers) -- (evo);
+  \draw[flow] (test) -- node[lbl,pos=0.5]{shuffled,\\first 200} (hold);
+  \draw[flow] (test) -- (rest);
+
+\end{tikzpicture}}
+\caption{The split, verified by running \code{dataset.split}: evolution 65, holdout 200,
+rest 35. The five hardest train problems are forced into the evolution pool; the remaining
+60 slots are filled by a per-rating quota.}
+\end{figure}
+
+\begin{keyidea}{Why the evolution pool and the holdout must be different problems}
+If you tune a prompt on the same problems you then score it on, a high score proves nothing:
+the prompt may simply have absorbed the quirks of those 65 problems. This is
+\textbf{overfitting}. The 200-problem holdout is never seen during evolution and is
+evaluated exactly once, at the very end, on the single winning prompt. That is the number
+that means something.
+
+The split is reproducible (\code{RANDOM\_SEED = 42}) and, better, the actual chosen IDs are
+written to \code{evolution\_ids.json} in the run directory, so a resumed run restores the
+\emph{exact same} split from disk rather than trusting the seed to regenerate it. That is
+the more robust choice: it survives a change to the splitting code.
+\end{keyidea}
+
+The stratification is deliberate. \code{\_EVOLUTION\_PER\_TIER} (lines 61-71) fixes a quota
+per rating tier (7 at rating 800, 6 at 1000, and so on), so the evolution pool cannot end up
+accidentally all-easy. The five rating-1800-and-above problems bypass the quota entirely
+and are always included: with only five hard problems available, leaving their inclusion to
+chance would risk a pool with no hard problems at all.
+
+\begin{honest}{Three real problems with the dataset layer}
+\textbf{The holdout is drawn only from \code{test/}, the evolution pool only from
+\code{train/}.} Look at the \code{\_SELECTED} registry: \code{train/} spans ratings 800 to
+1900, \code{test/} spans only 800 to 1400. So the evolution pool contains problems rated
+1500, 1600, 1700, 1800 and 1900 that have \emph{no counterpart} in the holdout, and the
+holdout's difficulty distribution is materially easier than the pool the prompts were tuned
+on. The generalisation claim is therefore ``tuned on 800-1900, tested on 800-1400''. That is
+not wrong, but it is not the like-for-like comparison a reader assumes, and neither the
+README nor the paper mentions it.
+
+\textbf{\code{reserved\_train\_problems} (lines 163-179) is dead code.} It is never called
+from anywhere in the repository. It computes a ``reserved'' set of train problems using
+\code{\_RESERVED\_PER\_TIER}, a table that exists solely to feed this unused function. It
+appears to be a leftover from a planned third split.
+
+\textbf{\code{sys.set\_int\_max\_str\_digits(1\_000\_000)}} is called at the top of
+\code{load\_problems} (line 87) with no comment. It raises Python 3.11's guard against
+converting enormous integers to strings, which exists to prevent a denial-of-service. It is
+presumably needed because some APPS problem has a huge numeric literal in its test data, but
+nothing records that, and a reader cannot tell whether it is load-bearing or superstition.
+\end{honest}
+
+\newpage
+%=============================================================================
+\section{The LLM layer}
+%=============================================================================
+
+\code{llm.py} is the only file that talks to Google Cloud. It handles authentication,
+retries, token accounting, and the four prompt-shaped functions the GA calls
+(\code{generate\_code}, \code{crossover}, \code{mutate\_inject}, \code{mutate\_delete},
+\code{mutate\_rephrase}).
+
+\subsection{Client construction: double-checked locking}
+
+\begin{lstlisting}[language=Python, caption={llm.py, lines 87-126, condensed. One client, shared by five threads.}]
+_api_client = None
+_api_lock   = threading.Lock()
+
+def _get_client():
+    global _api_client
+    if _api_client is not None:      # fast path: no lock taken once initialised
+        return _api_client
+    with _api_lock:
+        if _api_client is not None:  # re-check INSIDE the lock
+            return _api_client
+        ...
+        _api_client = genai.Client(vertexai=True, project=project,
+                                   location=config.GCP_REGION, credentials=creds,
+                                   http_options=_gt.HttpOptions(timeout=120_000))
+    return _api_client
+\end{lstlisting}
+
+\begin{jargon}{Double-checked locking}
+Five threads may call \code{\_get\_client} simultaneously at startup. Without a lock, all
+five could see \code{None} and each build a client. Taking a lock on \emph{every} call would
+serialise the fast path forever after. So: check without the lock (cheap, and correct once
+initialised), and only if it looks uninitialised take the lock and check \emph{again}
+inside it, because another thread may have won the race while you waited. This idiom is
+famously subtle in some languages; in CPython it is safe here because assignment to a module
+global is atomic.
+\end{jargon}
+
+\subsection{The retry state machine}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.95\textwidth}{!}{
+\begin{tikzpicture}
+
+  \node[box, minimum width=26mm] (try)  at ( 0.0,   0.0) {attempt $n$\\(max 10)};
+  \node[dec, minimum width=18mm] (exc)  at ( 0.0,  -3.0) {exception?};
+
+  \node[dec, minimum width=20mm] (empty) at ( 6.8, -3.0) {text empty?};
+  \node[box, minimum width=28mm, draw=okgreen] (ok) at (13.2, -3.0) {\textbf{return text}\\record tokens $+$ cost};
+
+  \node[dec, minimum width=22mm] (kind) at ( 0.0,  -6.3) {429 / 5xx /\\timeout?};
+  \node[box, minimum width=34mm] (wait) at ( 0.0,  -9.6) {sleep $5 \cdot 2^{n} + U(0,3)$\\seconds, then retry};
+  \node[box, minimum width=30mm, draw=warnred] (giveup) at ( 0.0, -12.9) {retries exhausted\\\textbf{return None}\\$\rightarrow$ LLMCallError};
+
+  \draw[flow] (try) -- (exc);
+  \draw[flow] (exc)   -- node[lbl, pos=0.42] {no} (empty);
+  \draw[flow] (empty) -- node[lbl, pos=0.42] {no} (ok);
+  \draw[flow] (exc)   -- node[lbl, pos=0.5] {yes} (kind);
+  \draw[flow] (kind)  -- node[lbl, pos=0.5] {yes; and in fact \emph{no} too:\\every error is retried} (wait);
+  \draw[flow] (wait)  -- node[lbl, pos=0.5] {after 10 attempts} (giveup);
+
+  % empty response is retryable: down the right, then back into the wait
+  \draw[flow] (empty.south) -- node[lbl, pos=0.28] {yes: retry} (6.8,-9.6) -- (wait.east);
+
+  % the retry loop, routed up the left, clear of both decisions
+  \draw[dflow] (wait.west) -- (-5.2,-9.6) -- node[lbl, pos=0.55] {attempt $n{+}1$} (-5.2,0.0) -- (try.west);
+
+\end{tikzpicture}}
+\caption{\code{llm.\_call\_api}, lines 142-220. Exponential backoff with jitter, up to 10
+attempts, covering both exceptions and the empty-response case.}
+\end{figure}
+
+\begin{jargon}{Exponential backoff with jitter}
+When a server says ``too many requests'', retrying immediately makes it worse. So wait, and
+double the wait each time: 5s, 10s, 20s, 40s and so on ($5 \cdot 2^{n}$). The random extra
+(\code{random.uniform(0, 3)}, the \emph{jitter}) stops five threads that were rate-limited
+at the same instant from retrying at the same instant and colliding again. Without jitter,
+parallel clients synchronise into waves.
+\end{jargon}
+
+The empty-response retry deserves note: a Gemini call can succeed at the HTTP level and
+return no text (the model spent its whole token budget on internal reasoning, or a safety
+filter fired). The code treats that as retryable, which is right. Critically, it records the
+cost \emph{before} checking whether the text is empty (lines 178-188), so an empty response
+still gets billed and still gets counted. That is the honest accounting choice: Google
+charges for it regardless.
+
+\begin{honest}{The backoff can wait 85 minutes, and every error is retried}
+At attempt 9 the wait is $5 \cdot 2^{9} = 2560$ seconds, over 42 minutes; the cumulative
+worst case across 10 attempts is roughly 85 minutes for a \emph{single} call, with no cap.
+Worse, the final \code{else} branch (lines 214-217) retries even errors that were explicitly
+classified as neither rate-limit, server error, nor timeout: an authentication failure or a
+malformed request will be retried ten times with full backoff before failing. A capped
+backoff (\code{min(wait, 60)}) and a non-retryable error class are both one-line changes.
+\end{honest}
+
+\begin{honest}{The configured temperatures are dead constants}
+\code{config.py} defines \code{TARGET\_TEMPERATURE = 0.0} and
+\code{OPTIMIZER\_TEMPERATURE = 0.7}. Verified by grep: \textbf{neither is read anywhere in
+the codebase}. \code{\_call\_api} hardcodes the same values inline:
+\begin{lstlisting}[language=Python]
+is_fit = (phase == "fitness")
+config=_gt.GenerateContentConfig(
+    temperature=0.0 if is_fit else 0.7,                       # not config.TARGET_TEMPERATURE
+    thinking_config=_gt.ThinkingConfig(thinking_budget=512 if is_fit else 2048),
+)
+\end{lstlisting}
+The values agree today, so nothing is broken. But editing \code{config.py} to change a
+temperature would have \emph{no effect}, silently, which is the worst kind of configuration
+bug. The thinking budgets (512 and 2048) are hardcoded with no config constant at all.
+\end{honest}
+
+\begin{honest}{Two pricing tables, one imported and never used}
+\code{llm.py} line 10 reads \code{from cost\_tracker import tracker, PRICING}, and then
+never uses \code{PRICING}. Instead it defines its \emph{own} \code{\_pricing} dict at line
+129 with overlapping but not identical contents, and \code{\_cost} uses that one. So the
+project carries two pricing tables that can silently drift apart. Since \code{llm.py} always
+passes an explicit \code{cost\_usd} into \code{tracker.record}, \code{cost\_tracker}'s own
+\code{PRICING} is only reachable through the \code{CallRecord} properties when
+\code{cost\_usd} is \code{None}, which never happens in this codebase. The whole
+\code{PRICING} table plus the three \code{CallRecord} cost properties are effectively dead.
+\end{honest}
+
+\begin{honest}{run\_fitness\_batch is a stub}
+\code{llm.py} lines 242-243 define \code{run\_fitness\_batch(requests)} whose entire body
+raises \code{NotImplementedError("Batch API not used: realtime only.")}. Nothing calls it.
+It is a fossil of an abandoned plan to use Vertex AI's batch endpoint, which would have been
+roughly half the price. Similarly \code{evaluator.run\_tests} (line 191) is a thin wrapper
+around \code{run\_tests\_verbose} that nothing calls.
+\end{honest}
+
+\newpage
+%=============================================================================
+\section{Cost tracking}
+%=============================================================================
+
+\begin{keyidea}{Why a course project needed a cost subsystem}
+Every fitness evaluation is a paid API call. One run is roughly 4{,}000 calls over 4 to 6
+hours, unattended. Without live accounting you start a run, go to sleep, and find out what
+it cost from the bill. \code{cost\_tracker.py} writes an updated JSON report after
+\emph{every single call}, so a run can be watched from another terminal and killed if it
+drifts. The three committed runs cost \$5.99, \$6.16 and \$4.90, all verified from the
+committed reports in \code{Costs/}.
+\end{keyidea}
+
+The tracker is a single global instance (\code{tracker = CostTracker()}, line 191) with a
+lock around all mutation, accumulating totals by phase (\code{fitness}, \code{crossover},
+\code{mutate\_inject}, ...) and by model. It writes three artifacts: an append-only
+\code{calls.jsonl} with one line per call, a live summary at \code{costs\_live.json} in the
+run directory, and a second live copy under \code{Costs/}.
+
+\code{restore\_from\_jsonl} (lines 77-112) is what makes \code{--resume} honest about money:
+it replays the entire \code{calls.jsonl} to rebuild the running total, so a resumed run
+reports cumulative cost across both halves rather than restarting the counter at zero.
+
+One subtlety handled correctly, in \code{llm.py} lines 172-175:
+
+\begin{lstlisting}[language=Python]
+in_tok  = getattr(usage, "prompt_token_count",     0) or 0
+out_tok = getattr(usage, "candidates_token_count", 0) or 0
+think   = getattr(usage, "thoughts_token_count",   0) or 0
+out_tok += think     # thinking tokens are billed at the OUTPUT rate
+\end{lstlisting}
+
+\begin{jargon}{Thinking tokens}
+Gemini 2.5 models can do hidden internal reasoning before answering. Those tokens are not
+in the visible response but they are billed, at the output rate. Folding \code{think} into
+\code{out\_tok} before costing is the difference between a cost estimate that matches the
+bill and one that badly understates it, especially for the operator calls which are given a
+2048-token thinking budget. The \code{or 0} guards against the API returning \code{None}
+rather than omitting the field, which \code{getattr}'s default alone would not catch.
+\end{jargon}
+
+\begin{honest}{Three blemishes on an otherwise solid subsystem}
+\textbf{Stale pricing rows.} \code{PRICING} still carries
+\code{claude-haiku-4-5@20251001}, \code{claude-haiku-4-5-20251001} and
+\code{claude-sonnet-4-6} rows from an earlier iteration that used a different backend. The
+project has used only Gemini for the whole of its committed history. The README already
+admits this one.
+
+\textbf{A write to disk on every call, twice.} \code{record()} calls \code{\_write\_summary}
+for \emph{both} live paths while holding the lock, so every one of roughly 4{,}000 calls per
+run rewrites two JSON files synchronously with the global lock held. It is harmless at this
+scale (the calls take seconds, the write takes microseconds) but it is a real serialisation
+point, and it means a crash mid-write can leave a truncated JSON file.
+
+\textbf{Rounding accumulates inconsistently.} Per-bucket totals are re-rounded to 6 decimal
+places on every update (\code{round(bucket[key]["total\_cost\_usd"] + call\_cost, 6)}) while
+the grand total is not rounded until it is written. The two can therefore disagree in the
+last decimal. Immaterial in dollars; the kind of thing worth noticing.
+\end{honest}
+
+\newpage
+%=============================================================================
+\section{Orchestration, checkpoints and resume}
+%=============================================================================
+
+\code{main.py} is the entry point. It runs pre-flight checks, builds the split, wires the
+loggers, runs the GA, then evaluates the winner on the holdout.
+
+\subsection{Pre-flight}
+
+The pre-flight sequence (lines 200-225) checks, in order: the service-account file exists;
+\code{google-genai} and \code{google-auth} import; the service account parses and its
+\code{project\_id} and \code{client\_email} are printed; both APPS directories exist; the
+problems load; and enough problems survive to fill both splits. Each failure exits with a
+specific message. For a program that is about to spend six hours and six dollars, failing in
+the first two seconds when the credential is missing is exactly right.
+
+\subsection{Signal handling}
+
+\begin{lstlisting}[language=Python, caption={main.py, lines 337-343. Ctrl-C does not lose the cost record.}]
+def _on_signal(signum, frame):
+    print(f"\n[MAIN] signal {signum}: flushing costs and exiting ...", flush=True)
+    tracker.flush()
+    sys.exit(1)
+
+signal.signal(signal.SIGTERM, _on_signal)
+signal.signal(signal.SIGINT,  _on_signal)
+\end{lstlisting}
+
+\begin{honest}{The signal handler cannot do what it looks like it does}
+It flushes the cost report, which is genuinely useful. But it does \emph{not} save the
+current population, so pressing Ctrl-C mid-generation discards up to a full generation of
+work: potentially an hour of wall clock and a dollar of API spend. The resume path can only
+restart from the last completed generation's checkpoint.
+
+There is also a subtler issue: \code{sys.exit()} in a signal handler raises
+\code{SystemExit} in the \emph{main} thread only. With a \code{ThreadPoolExecutor} whose
+worker threads are mid-call, the interpreter will wait on the pool's non-daemon threads at
+shutdown, so Ctrl-C can appear to hang for up to the 120 second API timeout. Not a
+correctness bug, but it explains behaviour that would otherwise look like a freeze.
+\end{honest}
+
+\subsection{Checkpointing and resume}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.96\textwidth}{!}{
+\begin{tikzpicture}[node distance=8mm]
+
+  \node[box, minimum width=26mm] (start) {\code{python main.py --resume}};
+  \node[box, right=12mm of start, minimum width=26mm] (find) {\code{\_find\_latest\_run}\\newest \code{run\_*} by mtime};
+  \node[dec, right=12mm of find, minimum width=20mm] (has) {generation\_*.json\\present?};
+
+  \node[box, right=12mm of has, minimum width=28mm, yshift=15mm] (loadgen) {\code{\_load\_resume\_state}\\population + history\\+ RNG state};
+  \node[box, right=12mm of has, minimum width=28mm, yshift=-15mm] (loadseed) {seed checkpoints only\\$\rightarrow$ resume gen 0\\(re-use scored seeds)};
+
+  \node[box, right=13mm of loadgen, minimum width=26mm] (ids) {restore split from\\\code{evolution\_ids.json}};
+  \node[box, below=10mm of ids, minimum width=26mm] (cost) {\code{restore\_from\_jsonl}\\replay \code{calls.jsonl}\\$\rightarrow$ cumulative cost};
+  \node[box, below=10mm of cost, minimum width=26mm, draw=okgreen] (go) {continue from\\gen $+$ 1};
+
+  \draw[flow] (start) -- (find);
+  \draw[flow] (find) -- (has);
+  \draw[flow] (has) -- node[lbl,pos=0.4]{yes} (loadgen);
+  \draw[flow] (has) -- node[lbl,pos=0.4]{no} (loadseed);
+  \draw[flow] (loadgen) -- (ids);
+  \draw[flow] (loadseed.east) to[bend right=24] (ids.south west);
+  \draw[flow] (ids) -- (cost);
+  \draw[flow] (cost) -- (go);
+
+\end{tikzpicture}}
+\caption{The resume path. Three separate pieces of state are restored: the population, the
+random number generator, and the cumulative cost. Restoring the RNG is what makes a resumed
+run take the same decisions the uninterrupted run would have.}
+\end{figure}
+
+\begin{keyidea}{Why the RNG state is checkpointed, and why that is unusually careful}
+Seeding a generator with \code{Random(42)} makes a run reproducible \emph{from the start}.
+It does nothing for a run resumed at generation 7: a fresh \code{Random(42)} would replay
+the coin flips from generation 1, so the resumed run would take different decisions than the
+uninterrupted one would have.
+
+So \code{ga.rng\_state\_to\_dict} serialises Python's full Mersenne Twister internal state
+(a 625-element tuple) into JSON, and \code{rng\_state\_from\_dict} restores it. The resumed
+run's next coin flip is precisely the one the original run would have made. Most student
+projects do not do this, and most would not notice it was missing.
+\end{keyidea}
+
+Seed evaluation gets its own finer-grained checkpointing: each of the five seed prompts is
+scored and immediately written to \code{seed\_NN\_uid.json} (\code{ga.py}, lines 378-387).
+Generation 0 is the most expensive single generation, since all five individuals are new; a
+crash during it would otherwise waste the lot. On resume, already-scored seeds are restored
+and skipped.
+
+\begin{honest}{The final generation is never checkpointed, and it breaks two things}
+\code{save\_checkpoint} is only ever called from \code{\_on\_gen}, which \code{ga.run}
+invokes at the \emph{top} of the loop, recording generation \code{gen-1}. When the loop
+finishes its last iteration, it exits and returns the winner without ever writing the final
+population.
+
+This is not a theoretical concern. Verified against all three committed runs:
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+run & checkpoints & gens in \code{history.json} & winner in a checkpoint? \\
+\midrule
+\code{run\_20260429\_210411} (tourn.) & 12 (00 to 11) & 13 (0 to 12) & \textbf{no} \\
+\code{run\_20260430\_014526} (roulette) & 12 (00 to 11) & 13 (0 to 12) & \textbf{no} \\
+\code{run\_20260430\_014530} (elitism) & 12 (00 to 11) & 13 (0 to 12) & yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two concrete consequences:
+
+\textbf{1. Resume silently rewinds.} A \code{--resume} after a completed 12-generation run
+restarts from generation 11, discarding generation 12 entirely.
+
+\textbf{2. It is the root cause of the broken genealogy} (Section~\ref{sec:genealogy}). The
+winning individual of the tournament and roulette runs exists only in \code{summary.json}
+and \code{best\_prompt.txt}; it is in no checkpoint, so its ancestry cannot be traced. The
+elitism run escapes only by luck: its winner (\code{822eea31}) was an elite from generation
+6, carried forward, and so it appears in earlier checkpoints.
+
+The fix is one line: call \code{on\_generation} once more after the loop.
+\end{honest}
+
+\subsection{The holdout evaluation}
+
+After the GA returns, \code{evaluate\_on\_holdout} (lines 154-175) scores the single winning
+prompt against all 200 holdout problems, in the same 5-way thread pool. Note the
+difference from \code{compute\_fitness}: here an infrastructure failure is clamped to 0.0
+(\code{scores[idx] = entry["score"] if entry["score"] >= 0.0 else 0.0}), rather than
+averaged in as \code{-1.0}. That is the third distinct treatment of the sentinel in the
+codebase, and this one is the most defensible.
+
+\newpage
+%=============================================================================
+\section{The analysis scripts}
+%=============================================================================
+
+\subsection{run\_baseline\_eval.py}
+
+\begingroup\sloppy
+Scores the tournament run's evolved prompt against the strongest hand-written seed
+(\code{SEED\_PROMPTS[0]}) on all 200 test-split problems, writing the results into
+\code{comparison.json}. It has a nice resumability property: it reads any existing JSONL
+first, keys by \code{problem\_id}, and only evaluates what is missing, so an interrupted
+comparison can be restarted without re-paying for completed problems.
+\par\endgroup
+
+\begin{honest}{The script cannot reproduce three of the four result sets it is credited with}
+The constants at the top are hardcoded:
+\begin{lstlisting}[language=Python]
+BEST_RUN_DIR   = config.RESULTS_DIR / "run_20260429_210411"      # the tournament run only
+EVOLVED_JSONL  = OUT_DIR / "evolved_tournament_test_evaluations.jsonl"
+EVOLVED_PROMPT = (BEST_RUN_DIR / "best_prompt.txt").read_text().strip()   # at IMPORT time
+\end{lstlisting}
+So the committed script produces exactly two files: \code{evolved\_tournament\_...} and
+\code{baseline\_...}. But \code{results/comparison/} also contains
+\code{evolved\_roulette\_test\_evaluations.jsonl} and
+\code{evolved\_elitism\_test\_evaluations.jsonl}, and
+\code{visualize\_test\_results.py} \emph{requires} all four and exits if any is missing.
+
+The roulette and elitism evaluation logs were therefore produced by hand-editing these
+constants between runs, and \textbf{that variant of the script was never committed}. The
+headline four-way comparison in the README and the paper cannot be regenerated from this
+repository without editing source. There is no scheme parameter and no CLI flag; adding one
+is a fifteen-minute change that would close the gap.
+
+Second, smaller: \code{EVOLVED\_PROMPT} is read at \emph{module import time}, not inside
+\code{main()}. Importing this module anywhere without that exact run directory present
+raises immediately, before any error handling can produce a useful message.
+\end{honest}
+
+\begin{honest}{comparison.json and the figures compute the mean two different ways}
+\code{build\_comparison} computes \code{mean\_score} over \emph{valid} entries only
+(\code{[r["score"] for r in results if r.get("score", -1) >= 0]}, divided by
+\code{len(valid)}). \code{visualize\_test\_results.py} divides by a hardcoded 200
+(\code{sum(v["score"] for v in t.values()) / 200}), which would count a \code{-1.0} sentinel
+as a \emph{negative}.
+
+The two agree today, and I verified why: all four evaluation logs contain 200 entries with
+zero infrastructure failures, so \code{len(valid) == 200} and the sentinel never appears.
+The agreement is luck, not design. A single \code{infra\_failure} in any log would make the
+JSON and the figures disagree, and the figures would be wrong.
+\end{honest}
+
+\subsection{visualize\_test\_results.py}
+
+Regenerates the five comparison figures from the committed JSONL logs. It needs no API
+access, and I confirmed it works: running it reproduced all five PNGs and printed exactly
+the numbers the README claims (Section~\ref{sec:verified}). It opens with
+\code{matplotlib.use("Agg")} before importing \code{pyplot}, selecting the non-interactive
+backend so it runs on a headless machine, and asserts up front that all four logs have 200
+entries with matching problem IDs. Those assertions are the right instinct: a silent
+mismatch between prompt runs would produce a plausible-looking and completely wrong chart.
+
+\newpage
+%=============================================================================
+\section{What the committed results actually say}
+\label{sec:verified}
+%=============================================================================
+
+Everything in this section was re-derived from the committed artifacts, not taken from the
+README.
+
+\subsection{The headline: the GA lost}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Prompt & Mean pass rate (200 test problems) & vs baseline \\
+\midrule
+\textbf{Baseline} (best hand-written seed) & \textbf{0.7900} & \\
+Tournament evolved & 0.7857 & $-0.0043$ \\
+Roulette evolved   & 0.7717 & $-0.0183$ \\
+Elitism evolved    & 0.7713 & $-0.0187$ \\
+\bottomrule
+\end{tabular}
+\caption{Verified by recomputing from the four \code{*\_test\_evaluations.jsonl} files, and
+independently reproduced by re-running \code{visualize\_test\_results.py}. All four logs
+contain exactly 200 entries and zero infrastructure failures. \textbf{No evolved prompt beat
+the hand-written baseline.}}
+\end{table}
+
+Per-problem, tournament vs baseline: \textbf{26 wins, 22 losses, 152 ties} (verified by
+recomputing the deltas in \code{comparison.json}). Tournament was the only scheme with a
+positive head-to-head record, and 152 ties out of 200 tells its own story: on three quarters
+of the problems the prompt made no difference whatsoever.
+
+The outcome distributions are strikingly flat. Baseline: 142 perfect, 44 partial, 12 compile
+failures, 2 total failures. Tournament evolved: 142 perfect, 44 partial, 10 compile
+failures, 4 total failures. Evolution moved two problems from ``compile failure'' to ``fails
+all tests''. That is the entire measured effect of the whole exercise on this metric.
+
+\begin{keyidea}{The honest headline, and why it is still worth defending}
+The project's result is \textbf{negative}: a genetic algorithm, given \$17 and 13{,}000
+model calls, did not find an instruction prompt better than the one a human wrote by hand in
+an afternoon.
+
+That is a real, publishable finding, and the machinery that produced it is sound. The value
+of the project is that it is \emph{capable of proving its own hypothesis wrong}, which most
+prompt-optimisation work is not, because most of it has no objective fitness function and no
+held-out test set. Defend the method, report the result.
+\end{keyidea}
+
+\subsection{Cost, verified}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Run & LLM calls & Cost (USD) \\
+\midrule
+\code{run\_20260429\_210411} (tournament) & 4{,}734 & \$5.99 \\
+\code{run\_20260430\_014526} (roulette)   & 4{,}529 & \$6.16 \\
+\code{run\_20260430\_014530} (elitism)    & 3{,}739 & \$4.90 \\
+\midrule
+\textbf{Total} & \textbf{13{,}002} & \textbf{\$17.05} \\
+\bottomrule
+\end{tabular}
+\caption{Read directly from \code{Costs/cost\_run\_*.json}. This matches the README's
+``roughly 13,000 LLM calls and about \$17'' exactly. Note the roulette run cost \emph{more}
+than the tournament run despite 205 fewer calls: roulette's operator calls to the expensive
+Gemini 2.5 Pro must have run longer or produced more thinking tokens.}
+\end{table}
+
+\subsection{The finding the README misses: evolution went backwards}
+\label{sec:regression}
+
+This is the most important thing in this document, and neither the README nor the paper says
+it. It is derived entirely from the committed \code{history.json} of each run.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.92\textwidth, height=7cm,
+  xlabel={generation}, ylabel={best fitness in population},
+  xmin=-0.4, xmax=12.4, ymin=0.62, ymax=0.76,
+  grid=both, grid style={linegrey!50},
+  legend style={font=\scriptsize, fill=white, draw=linegrey,
+                at={(0.5,-0.20)}, anchor=north, legend columns=3, column sep=1.2em},
+  label style={font=\small}, tick label style={font=\scriptsize},
+  every axis plot/.append style={thick, mark size=1.6pt},
+]
+\addplot[color=inkblue, mark=*] coordinates {
+ (0,0.6909) (1,0.6559) (2,0.6641) (3,0.6717) (4,0.6812) (5,0.7181)
+ (6,0.6654) (7,0.7063) (8,0.6918) (9,0.7387) (10,0.6854) (11,0.6998) (12,0.6531)};
+\addlegendentry{tournament (elitism 0)}
+\addplot[color=okgreen, mark=square*] coordinates {
+ (0,0.7380) (1,0.6961) (2,0.7116) (3,0.7032) (4,0.6856) (5,0.7015)
+ (6,0.6648) (7,0.6744) (8,0.7084) (9,0.6484) (10,0.7034) (11,0.7005) (12,0.6619)};
+\addlegendentry{roulette (elitism 0)}
+\addplot[color=warnred, mark=triangle*] coordinates {
+ (0,0.7338) (1,0.7338) (2,0.7338) (3,0.7338) (4,0.7338) (5,0.7338)
+ (6,0.7346) (7,0.7346) (8,0.7346) (9,0.7346) (10,0.7346) (11,0.7346) (12,0.7346)};
+\addlegendentry{elitism (elitism 1)}
+\end{axis}
+\end{tikzpicture}
+\caption{Best fitness per generation, plotted from the committed \code{history.json} of each
+run. The tournament and roulette curves are \emph{not} monotonic: they wander, and both
+\textbf{end below where they started}. Only the elitism run is non-decreasing, which is
+exactly what an elite guarantees.}
+\end{figure}
+
+\begin{honest}{The README's ``evolution reliably improved fitness'' is not what the data shows}
+The README states: ``evolution reliably improved fitness on the 65-problem training pool
+(best-of-run fitness 0.65 to 0.73 depending on scheme)''. Those three numbers are the
+\emph{final generation's} best. Compare them with generation 0, the hand-written seeds:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+run & gen 0 best (seeds) & gen 12 best (final) & change \\
+\midrule
+tournament & 0.6909 & 0.6531 & \textbf{$-0.0378$ (worse)} \\
+roulette   & 0.7380 & 0.6619 & \textbf{$-0.0761$ (worse)} \\
+elitism    & 0.7338 & 0.7346 & $+0.0008$ (flat) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{In two of three runs the GA ended with a worse prompt than the seeds it started
+from.} The third improved by 0.0008, which is noise. The roulette run's peak fitness was its
+generation 0. The tournament run peaked at 0.7387 at generation 9 and then \emph{lost that
+individual}, finishing 0.086 below its own peak.
+
+The mechanism is not mysterious and is worth being able to explain: with \code{elitism = 0},
+the entire population is replaced every generation, so nothing protects the best individual.
+A good prompt found at generation 9 is gone by generation 10 unless it happens to be
+selected \emph{and} survives crossover and mutation intact. With a population of 5 and an
+LLM rewriting the text at every step, it usually does not.
+
+The paper's claim (line 516) that ``on the 65-problem training subset, the GA consistently
+produced prompts that outperformed the best'' seed is contradicted by the repository's own
+\code{history.json}. So is the Discussion's claim (line 505) that ``tournament selection
+with elitism delivered the most reliable training improvement due to its strict,
+non-decreasing best-fitness guarantee'': that guarantee is real, but the run labelled
+\emph{tournament} had elitism 0 and is visibly not non-decreasing.
+
+\textbf{This is the single most important thing to be ready to discuss.} The defensible
+position is a good one: ``the run that protected its best individual held its ground; the
+two that did not, regressed. That is textbook GA behaviour and my data shows it cleanly. My
+write-up reported the final generation's best as though it were the run's achievement, and
+that was wrong.''
+\end{honest}
+
+\begin{honest}{The recorded elitism\_count is wrong in all three runs}
+\code{main.py} writes the run's \code{config.json} using the \emph{module constant}:
+\begin{lstlisting}[language=Python]
+(run_dir / "config.json").write_text(json.dumps({
+    ...
+    "elitism_count": config.ELITISM_COUNT,     # NOT the value actually passed to ga.run
+\end{lstlisting}
+but the value actually used comes from \code{main}'s own argument:
+\code{elitism\_count = 1 if args.scheme == "elitism" else None}. So:
+
+\begin{center}
+\begin{tabular}{llcc}
+\toprule
+run & scheme & \code{config.json} records & actually used \\
+\midrule
+\code{run\_20260429\_210411} & (none: predates \code{--scheme}) & 2 & 0 (inferred) \\
+\code{run\_20260430\_014526} & roulette & 0 & 0 \\
+\code{run\_20260430\_014530} & elitism  & 0 & \textbf{1} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The elitism run's own config file says it used no elitism. The tournament run's says it used
+\emph{two} elites.
+
+The ``0 (inferred)'' entry needs stating precisely. What is \emph{verified}: that run's
+\code{config.json} records \code{elitism\_count: 2}, and its \code{summary.json} records
+\code{selection\_scheme: null}, meaning it predates the \code{--scheme} flag. What is
+\emph{inferred}: elitism 2 cannot have been in force, because an elite mathematically
+guarantees best fitness never decreases, and that run's best fitness decreases repeatedly
+(Figure above). So either \code{config.ELITISM\_COUNT} was 0 at run time and the 2 was
+written by a later edit, or the code changed mid-run. All three runs record
+\code{resumed: true}, so a code change between the original run and its resume is a live
+possibility. \textbf{The artifacts do not record enough to settle it.}
+
+The lesson generalises: a run directory should record the values a run \emph{actually used},
+resolved at call time, not a snapshot of module constants taken before the arguments were
+applied. As it stands the committed \code{config.json} files cannot be trusted, and the
+provenance of the flagship tournament run cannot be fully reconstructed.
+\end{honest}
+
+\subsection{The truncated winner}
+\label{sec:truncation}
+
+\begin{lstlisting}[caption={results/run\_20260429\_210411/best\_prompt.txt, in its entirety (160 characters).}]
+First, approach the problem systematically: analyze the input-output relationship to
+identify the core algorithm, paying close attention to variable types, edge
+\end{lstlisting}
+
+It stops mid-sentence, at ``edge''. Presumably ``edge cases''. This is the prompt that won
+the tournament run and that \code{run\_baseline\_eval.py} scored at 0.7857 against the
+baseline's 0.7900.
+
+The cause is \code{API\_FALLBACK\_MAX\_TOKENS\_OPS = 700} in \code{config.py}, capping every
+operator's output. The model was cut off mid-word, \code{res.strip()} was truthy, and the
+fragment entered the population. All three winners show it:
+
+\begin{center}
+\begin{tabular}{lrl}
+\toprule
+run & length & ends with \\
+\midrule
+tournament & 160 chars & ``\code{...variable types, edge}'' \\
+roulette   & 120 chars & ``\code{...first perform a}'' \\
+elitism    & 132 chars & ``\code{...include main(),}'' \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{honest}{Every single winning prompt is a truncated fragment}
+This is worse than the README's framing of it as a one-run artifact. \textbf{All three}
+runs' winners are cut off mid-sentence, and all three are between 120 and 160 characters:
+far shorter than the roughly 500-character seeds they descend from.
+
+That reframes the whole result. The comparison is not ``evolved prompt vs hand-written
+prompt''. It is ``a truncated 160-character fragment vs a complete 500-character
+hand-written prompt'', and the fragment lost by 0.0043. One could argue the GA was doing
+something interesting (short prompts scoring within half a point of a careful long one is
+not nothing), but what it \emph{was not} doing is the experiment as described.
+
+The 700-token cap should never have bound at all: these prompts are 30 to 40 tokens. The
+likely explanation, and this is \textbf{inferred}, not verified, is that
+\code{max\_output\_tokens} is being consumed by Gemini 2.5 Pro's 2048-token thinking budget
+against a 700-token output ceiling, so the visible output is truncated after the model has
+already spent its allowance reasoning. That is consistent with the thinking budget being set
+to 2048 for operator calls while the output cap is 700, but I could not verify it without
+API access.
+
+Either way the defect is the missing completeness check flagged in
+Section~\ref{sec:operators}: an operator's output should be rejected if it does not end at
+a sentence boundary, or if the API reports a length-based finish reason. The API's
+\code{finish\_reason} field is available on the response and the code never looks at it.
+\end{honest}
+
+\subsection{The broken genealogy}
+\label{sec:genealogy}
+
+The README highlights ``full genealogy logging (every individual records its parents,
+operators, and intermediate prompt states)'' as a headline engineering feature, and the
+paper's abstract goes further: ``Genealogy analysis reveals which instructional strategies,
+edge-case emphasis, pseudocode planning, output formatting, survive selection pressure and
+generalize across problem distributions.''
+
+The underlying data capture is real: \code{parent\_a}, \code{parent\_b}, \code{operators}
+and \code{intermediate\_steps} are populated and are written into every
+\code{generation\_NN.json}. But the analysis built on it did not work:
+
+\begin{lstlisting}[caption={results/run\_20260429\_210411/genealogy\_tree.json, in its entirety.}]
+{
+  "uid": "efd4a762",
+  "note": "not found in checkpoints"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption={The corresponding genealogy\_report.txt, excerpted.}]
+Best uid  : efd4a762
+Lineage depth (parent_a chain): 0 steps
+Total individuals in registry: 60
+\end{lstlisting}
+
+\begin{honest}{The genealogy analysis found nothing, and the script that produced it is not in the repo}
+Two separate problems.
+
+\textbf{It failed.} The tournament and roulette reports both show ``Lineage depth: 0
+steps'' and a tree of \code{"not found in checkpoints"}. Only the elitism run produced a
+real lineage (depth 2). The root cause is established in the checkpointing box above: the
+final generation is never written to disk, so the winners of the two elitism-free runs exist
+in no checkpoint and their ancestry cannot be traced. The feature is not conceptually broken;
+it is defeated by a one-line omission elsewhere.
+
+\textbf{The script does not exist.} Verified by grep: \textbf{no Python file in the
+repository contains the string ``genealogy''}. \code{genealogy\_report.txt} and
+\code{genealogy\_tree.json} are committed \emph{outputs} of a script that was never
+committed. So the repository's headline analysis feature cannot be re-run, inspected, or
+fixed by anyone reading it, including its author in six months.
+
+Consequently the paper's abstract claim that genealogy analysis ``reveals which
+instructional strategies survive selection pressure'' is not supported by anything in this
+repository. The committed genealogy analysis reveals a depth of 0 for the flagship run. The
+raw data to do the analysis properly is present in the checkpoints; the analysis is not.
+\end{honest}
+
+\newpage
+%=============================================================================
+\section{Where the documentation and the code disagree}
+%=============================================================================
+
+Collected in one place, because these are the questions an interviewer asks.
+
+\subsection{The license contradiction}
+
+\begin{honest}{The README says MIT. The LICENSE file is not MIT.}
+README line 79: ``Code is MIT licensed (see LICENSE).''
+
+\code{LICENSE} line 3: ``\code{\# PolyForm Strict License 1.0.0}''.
+
+These are close to opposites. MIT permits reuse, modification and redistribution;
+PolyForm Strict 1.0.0 permits \emph{viewing only} and forbids any use, reuse or
+redistribution. The git history explains how it happened: commit \code{38c7f8b}, ``Switch
+license to PolyForm Strict 1.0.0 (public to view, no reuse or redistribution)'', changed
+the file and never updated the README sentence pointing at it.
+
+This is the most consequential documentation bug in the repository, because it is the one
+with legal meaning: a reader who trusts the README could reasonably believe they had been
+granted MIT rights that the actual license withholds. It is a one-line fix and it should be
+made before anyone else reads the repo.
+\end{honest}
+
+\subsection{The g++ failure mode is described backwards}
+
+\begin{honest}{The README says it fails loudly. It scores zero silently.}
+README line 83 (Challenges): ``no \code{g++} on PATH means no fitness, and the fitness path
+fails with a plain `g++ not found' rather than silently scoring zero.''
+
+Verified on this machine, which has \code{gcc-13} but no \code{g++}:
+\begin{lstlisting}
+>>> evaluator.run_tests_verbose('int main(){return 0;}', ['1'], ['1'], 2)
+reason: compile_fail | compile error: 'g++ not found on PATH' | score: 0.0
+\end{lstlisting}
+
+It returns \code{score = 0.0} and \code{reason = "compile\_fail"}, and the GA carries on
+perfectly happily. The string ``g++ not found on PATH'' appears only inside the per-problem
+JSON log, indistinguishable at the fitness level from a genuine compile error. A run on a
+machine without \code{g++} would complete all 12 generations, spend the full \$6 on API
+calls, assign every individual a fitness of exactly 0.0, and report a winner chosen at
+random. \textbf{The README describes the opposite of what the code does.}
+
+Note that \code{RUNNING.md} gets this right: its failure table says ``\code{g++ not found on
+PATH} in results $\rightarrow$ Install g++; every candidate scores 0 without it''. So the
+repository contradicts itself, and the accurate description is in the less prominent file.
+
+The fix belongs in \code{main.py}'s pre-flight, which already checks the credential and the
+dataset but not the compiler: a \code{shutil.which("g++")} check, or a trial compile of a
+hello-world, would turn a six-hour \$6 no-op into a two-second error.
+\end{honest}
+
+\subsection{The paper's abstract claims comparisons that were never run}
+
+\begin{honest}{Chain-of-thought and random search do not exist in this codebase}
+The paper's abstract states: ``Preliminary results demonstrate that evolved prompts
+outperform hand-crafted baselines, chain-of-thought prompts, and random search, achieving
+meaningful improvements in pass@1 scores.''
+
+Three claims, and the committed repository supports none of them:
+\begin{itemize}
+  \item \textbf{``outperform hand-crafted baselines''}: contradicted. Evolved 0.7857 vs
+  baseline 0.7900. The README already flags this one honestly.
+  \item \textbf{``chain-of-thought prompts''}: verified by grep, \textbf{there is no
+  chain-of-thought comparison anywhere in the codebase}. No script, no result file, no
+  mention.
+  \item \textbf{``random search''}: likewise, \textbf{no random-search baseline exists}. It
+  is not implemented and no artifact records one.
+\end{itemize}
+
+The only comparison the repository can support is evolved vs one hand-written seed, and it
+went the wrong way. The word ``preliminary'' does some work, but not this much. If the paper
+is ever shown to anyone, this abstract is the first thing they read and the easiest thing to
+falsify.
+\end{honest}
+
+\subsection{The paper describes a configuration that does not exist}
+
+The paper (Experimental Configurations) describes a ``full-scale setup: population size 15,
+training dataset 100 problems, 20 generations'' alongside the ``optimised setup'' of
+population 5 / 65 problems / 12 generations that the code actually implements.
+
+There is no committed artifact from a population-15, 20-generation run, and \code{config.py}
+has no such setting. One tantalising trace: \code{seeds.py} contains exactly \textbf{15}
+seed prompts, of which \code{main.py} uses only the first five
+(\code{SEED\_PROMPTS[:config.POPULATION\_SIZE]}). The remaining ten are almost certainly the
+population-15 setup's seeds, left in place when the configuration shrank. This is
+\textbf{inferred} from the coincidence of the number 15 and the slicing, not confirmed
+anywhere in the source.
+
+Note this also makes the README's ``starts from 5 hand-written seeds in \code{seeds.py}''
+imprecise: there are 15 in the file, and 5 are used.
+
+\subsection{corrections.tex: a patch file, partially applied}
+
+\code{corrections.tex} is a loose file at the repo root containing blocks of LaTeX marked
+``REPLACE: ... (was lines 263-277)'' to be pasted into the paper. Checking whether they
+landed: the ``Elitism (top-1)'' correction \emph{is} in the paper (line 272), so the file
+was partially applied. The survival-scheme wording differs from the corrected version, and
+the Table 2 corrections (adding the Optimizer LLM row and the temperatures) are not present
+in the paper's parameter table.
+
+So \code{corrections.tex} is a half-applied patch left in the repository root with no
+indication of which parts landed. It should either be applied and deleted, or moved
+somewhere that marks it as history. As a public-facing artifact it reads as an unfinished
+edit.
+
+\subsection{The run directory naming drifted}
+
+Both the code and \code{RUNNING.md} say a run directory carries its scheme in the name. The
+committed ones do not:
+
+\begin{lstlisting}
+main.py line 292 creates:   run_{timestamp}_{args.scheme}
+RUNNING.md documents:       results/run_<timestamp>_<scheme>/
+
+but the three committed run directories are bare timestamps:
+    results/run_20260429_210411      (no scheme suffix)
+    results/run_20260430_014526      (no scheme suffix)
+    results/run_20260430_014530      (no scheme suffix)
+\end{lstlisting}
+
+The committed runs therefore predate the current naming code, which is consistent with the
+tournament run's \code{summary.json} recording \code{selection\_scheme: null}. Harmless in
+itself, but it is direct evidence that \textbf{the committed results were not produced by
+the committed code}, which is the thing to be careful about: every number in this repository
+comes from a version of the program that no longer exists in it.
+
+\subsection{Minor}
+
+\code{main.py} line 222 prints ``loading 305 pre-selected Codeforces problems'' and then
+loads 300 (verified). The README already notes this one.
+
+\newpage
+%=============================================================================
+\section{Verification record}
+%=============================================================================
+
+What was actually executed while writing this document, on a machine with Python 3.11+,
+matplotlib and numpy, but \textbf{no \code{g++}} and \textbf{no GCP credentials}:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{6.6cm}p{8.2cm}}
+\toprule
+\textbf{Check} & \textbf{Result} \\
+\midrule
+All 10 modules byte-compile & Pass \\
+\code{dataset.load\_problems()} & Loads \textbf{300} problems (100 train, 200 test), confirming the README's ``305'' print statement is wrong \\
+\code{dataset.split(...)} & evolution 65, holdout 200, rest 35: matches config exactly \\
+\code{visualize\_test\_results.py} & Regenerates all 5 PNGs; prints tournament 0.7857, roulette 0.7717, elitism 0.7713, baseline 0.7900, matching the README table exactly \\
+Recomputed means from the 4 JSONL logs & Independently reproduces the same four numbers; all logs have 200 entries, 0 infra failures \\
+Recomputed win/loss from \code{comparison.json} & 26 wins, 22 losses, 152 ties: matches the README \\
+Cost totals from \code{Costs/cost\_run\_*.json} & 13{,}002 calls, \$17.05: matches ``roughly 13,000'' and ``about \$17'' \\
+\code{evaluator.run\_tests\_verbose} without \code{g++} & Returns \code{score = 0.0}, \code{reason = compile\_fail}: \textbf{contradicts} the README's ``rather than silently scoring zero'' \\
+Best fitness monotonicity per \code{history.json} & tournament and roulette \textbf{non-monotonic and end below gen 0}; elitism monotonic \\
+Winner present in any checkpoint & tournament \textbf{no}, roulette \textbf{no}, elitism yes \\
+\code{grep} for genealogy in \code{*.py} & \textbf{No match}: the script is not committed \\
+\code{grep} for chain-of-thought / random search & \textbf{No match}: neither baseline exists \\
+\code{grep} for \code{TARGET\_TEMPERATURE} usage & Defined in \code{config.py}, \textbf{read nowhere} \\
+README license claim vs LICENSE file & README says MIT; file is PolyForm Strict 1.0.0 \\
+\midrule
+\textbf{Not verified} & The full evolution loop, every Vertex AI call, and the compile-and-run fitness path. These need a billed GCP project and a \code{g++} install. All fitness numbers in this document are read from committed artifacts, not reproduced. \\
+\bottomrule
+\end{tabular}
+\caption{Verification record. The repository's own analysis pipeline reproduces its headline
+numbers exactly from the committed logs, which is a genuine strength: the results are
+auditable without spending a dollar.}
+\end{table}
+
+\subsection{Everything labelled inferred in this document}
+
+Stated plainly, so nothing here is mistaken for a confirmed fact:
+
+\begingroup\sloppy
+\begin{enumerate}
+  \item \textbf{That the tournament run used elitism 0} despite its \code{config.json}
+  recording 2. Inferred from the mathematical impossibility of an elite coexisting with
+  decreasing best fitness. The artifacts do not record the value actually used.
+  \item \textbf{That the 700-token operator cap interacts with the 2048-token thinking
+  budget} to cause truncation. Consistent with the settings and with all three winners being
+  truncated, but unverifiable without API access.
+  \item \textbf{That \code{seeds.py}'s ten unused prompts are leftovers from the paper's
+  population-15 ``full-scale setup''}. Inferred from the coincidence of the number 15.
+  \item \textbf{That \code{sys.set\_int\_max\_str\_digits} is needed for a specific APPS
+  problem's large numeric data}. Nothing records why it is there.
+  \item \textbf{That the roulette/elitism comparison logs were made by hand-editing
+  \code{run\_baseline\_eval.py}}. Inferred: the logs exist, the committed script cannot
+  produce them, and no other script does.
+\end{enumerate}
+\endgroup
+
+\newpage
+%=============================================================================
+\section{Summary: the honest scorecard}
+%=============================================================================
+
+\subsection{What is genuinely good}
+
+\begin{itemize}
+  \item \textbf{The fitness function.} Compile-and-run against real tests is the right
+  answer and the hard one. It is what makes the negative result trustworthy rather than
+  arguable.
+  \item \textbf{Failure-conditioned mutation.} Feeding real compile errors and wrong outputs
+  into the mutation operator is a genuinely good idea: a directed mutation in a
+  gradient-free method.
+  \item \textbf{RNG state checkpointing.} Serialising the full Mersenne Twister state so
+  \code{--resume} is decision-identical is unusually careful.
+  \item \textbf{Process-group killing.} \code{os.setsid} plus \code{os.killpg} is the
+  correct way to bound untrusted subprocesses, and most first attempts get it wrong.
+  \item \textbf{Cost accounting, including thinking tokens.} The \$17 figure is real and
+  auditable, and folding thinking tokens in at the output rate is the detail that makes it
+  match the bill.
+  \item \textbf{Auditable results.} The analysis pipeline reproduces the headline numbers
+  exactly from committed logs, offline. I checked; it does.
+  \item \textbf{A README that already admits the headline negative result} and several of
+  its own bugs. That is rarer than it should be.
+\end{itemize}
+
+\subsection{What to fix first}
+
+Ordered by how much damage each does if someone else finds it first:
+
+\begin{enumerate}
+  \item \textbf{The license contradiction} (README says MIT, file is PolyForm Strict). One
+  line. It is the only defect here with legal meaning.
+  \item \textbf{The ``evolution reliably improved fitness'' claim} in the README, and the
+  paper's matching claim. The data shows two of three runs \emph{regressing} below their
+  seeds. Section~\ref{sec:regression}.
+  \item \textbf{The paper's abstract}, which claims comparisons against chain-of-thought and
+  random search that do not exist in the codebase.
+  \item \textbf{Checkpoint the final generation} (one line). It silently breaks resume and
+  it is the root cause of the broken genealogy.
+  \item \textbf{Validate operator output for completeness.} All three winning prompts are
+  truncated mid-sentence. Check the API's \code{finish\_reason}.
+  \item \textbf{Add \code{g++} to the pre-flight check}, and fix the README sentence that
+  describes this failure mode backwards.
+  \item \textbf{Record the elitism value actually used} in each run's \code{config.json},
+  not the module constant.
+  \item \textbf{Commit the genealogy script}, or delete its orphaned outputs and drop the
+  claim.
+  \item \textbf{Parameterise \code{run\_baseline\_eval.py} by scheme}, so the four-way
+  comparison is reproducible without editing source.
+  \item \textbf{Statistical testing.} A 0.0043 gap over 200 problems needs a paired test or
+  a bootstrap before it means anything in either direction. The README already says this.
+  \item \textbf{Delete the dead code}: \code{run\_fitness\_batch}, \code{run\_tests},
+  \code{reserved\_train\_problems}, the unused \code{PRICING} import, the Claude pricing
+  rows, the dead temperature constants.
+\end{enumerate}
+
+\begin{keyidea}{The line to take in an interview}
+Lead with the method, not the result. The project built an objective, expensive, honest
+measuring instrument for a question that is usually answered by vibes, and then reported
+that the answer was no. The instrument works: I re-ran its analysis and it reproduces its
+own numbers exactly.
+
+Then get ahead of the two things a careful reader will find: the winning prompts are all
+truncated fragments, and two of three runs ended below their starting seeds because nothing
+protected the best individual. Both have clean, short explanations. Both are more
+interesting than the headline. Neither is in the write-up yet, and fixing that is the next
+job.
+\end{keyidea}
+
+\end{document}
